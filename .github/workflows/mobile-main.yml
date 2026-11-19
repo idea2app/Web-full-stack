@@ -28,13 +28,17 @@ jobs:
 
             - uses: pnpm/action-setup@v6.1.1
               with:
-                  version: 12.15.0
+                  version: 12.21.0
 
             - uses: actions/setup-node@v7.1.0
               with:
                   node-version: 26
                   cache: pnpm
                   cache-dependency-path: mobile/pnpm-lock.yaml
+
+            - name: Install automation dependencies
+              working-directory: .
+              run: pnpm install --frozen-lockfile
 
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
@@ -48,9 +52,10 @@ jobs:
             - name: Get package version
               if: ${{ env.WMA_ID }}
               id: package-version
-              run: |
-                  version=$(node -p "require('./package.json').version")
-                  echo "current-version=$version" >> "$GITHUB_OUTPUT"
+              working-directory: .
+              run: pnpm exec zx script/set-package-version.ts
+              env:
+                  PACKAGE_JSON_PATH: mobile/package.json
 
             - name: Upload artifact
               if: ${{ env.WMA_ID }}
@@ -61,13 +66,8 @@ jobs:
 
             - name: Upload to WeChat
               if: ${{ env.WMA_ID }}
+              working-directory: .
+              run: pnpm exec zx script/upload-mobile.ts
               env:
+                  PACKAGE_VERSION: ${{ steps.package-version.outputs.current-version }}
                   WMA_UPLOAD_KEY: ${{ secrets.WMA_UPLOAD_KEY }}
-              run: |
-                  trap 'rm -f WMA-upload.key' EXIT
-                  printf '%s' "$WMA_UPLOAD_KEY" > WMA-upload.key
-                  pnpx miniprogram-ci upload \
-                    --pp ./ \
-                    --pkp ./WMA-upload.key \
-                    --appid "$WMA_ID" \
-                    --uv "${{ steps.package-version.outputs.current-version }}"

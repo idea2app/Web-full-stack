@@ -4,64 +4,34 @@ on:
     workflow_dispatch:
     push:
         branches:
-            - main
+            - '**'
         paths:
             - 'browser'
             - 'browser/**'
             - '.github/workflows/browser-main.yml'
 
-permissions:
-    contents: write
-
 jobs:
     build-and-deploy:
         runs-on: ubuntu-latest
-        defaults:
-            run:
-                working-directory: browser
         env:
             VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
             VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
             VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        permissions:
+            contents: write
         steps:
             - uses: actions/checkout@v7.0.1
+              if: ${{ env.VERCEL_TOKEN && env.VERCEL_ORG_ID && env.VERCEL_PROJECT_ID }}
               with:
                   submodules: recursive
 
-            - uses: pnpm/action-setup@v6.1.1
-              with:
-                  version: 7
-
-            - uses: actions/setup-node@v7.1.0
-              if: ${{ !env.VERCEL_TOKEN || !env.VERCEL_ORG_ID || !env.VERCEL_PROJECT_ID }}
-              with:
-                  node-version: 14
-                  cache: pnpm
-                  cache-dependency-path: browser/pnpm-lock.yaml
-
-            - name: Install dependencies
-              if: ${{ !env.VERCEL_TOKEN || !env.VERCEL_ORG_ID || !env.VERCEL_PROJECT_ID }}
-              run: pnpm install --frozen-lockfile
-
-            - name: Export static pages
-              if: ${{ !env.VERCEL_TOKEN || !env.VERCEL_ORG_ID || !env.VERCEL_PROJECT_ID }}
-              run: pnpm export
-
-            - name: Deploy to GitHub Pages
-              if: ${{ !env.VERCEL_TOKEN || !env.VERCEL_ORG_ID || !env.VERCEL_PROJECT_ID }}
-              uses: peaceiris/actions-gh-pages@v4.1.0
-              with:
-                  publish_dir: ./browser/out
-                  personal_token: ${{ github.token }}
-                  force_orphan: true
-
             - name: Deploy to Vercel
               if: ${{ env.VERCEL_TOKEN && env.VERCEL_ORG_ID && env.VERCEL_PROJECT_ID }}
-              uses: amondnet/vercel-action@42.3.0
+              uses: amondnet/vercel-action@v42.3.0
               with:
                   vercel-token: ${{ secrets.VERCEL_TOKEN }}
-                  github-token: ${{ github.token }}
+                  github-token: ${{ secrets.GITHUB_TOKEN }}
                   vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
                   vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
                   working-directory: ./browser
-                  vercel-args: --prod
+                  vercel-args: ${{ github.ref == 'refs/heads/main' && '--prod' || '' }}
