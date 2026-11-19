@@ -4,3 +4,6 @@
 [submodule "server"]
 	path = server
 	url = https://github.com/idea2app/REST-Node-ts.git
+[submodule "mobile"]
+	path = mobile
+	url = https://github.com/idea2app/Taro-Shadcn-MobX-ts.git
