@@ -1,0 +1,39 @@
+name: Assign eligible issues to Copilot
+
+on:
+    issues:
+        types:
+            - opened
+            - closed
+
+permissions:
+    issues: write
+
+jobs:
+    assign:
+        if: >-
+            ${{
+              (github.event.action == 'opened' && !contains(github.event.issue.labels.*.name, 'documentation')) ||
+              github.event.action == 'closed'
+            }}
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7.0.1
+
+            - uses: actions/setup-node@v7.1.0
+              with:
+                  node-version: 26
+
+            - uses: pnpm/action-setup@v6.1.1
+              with:
+                  version: 12.21.0
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Assign issue to Copilot
+              run: pnpm exec zx script/assign-issue.ts
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  ISSUE_NUMBER: ${{ github.event.issue.number }}
+                  ISSUE_ACTION: ${{ github.event.action }}

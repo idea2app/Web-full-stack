@@ -1,0 +1,26 @@
+name: Requirements
+description: Submit a product or technical requirement
+title: '[Requirement] '
+labels:
+    - documentation
+body:
+    - type: textarea
+      id: requirement
+      attributes:
+          label: Requirement details
+          description: Describe the requirement and acceptance criteria in Markdown. Attach relevant files or images.
+          render: markdown
+          placeholder: Describe the requirement and expected outcome.
+      validations:
+          required: true
+    - type: dropdown
+      id: scope
+      attributes:
+          label: Development scope
+          description: Select the scaffold directory for this requirement.
+          options:
+              - server
+              - browser
+              - mobile
+      validations:
+          required: true

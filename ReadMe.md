@@ -1,6 +1,6 @@
-# Integration Test
+# Web Full-stack Scaffold
 
-**Automated Testing**, **Continuous Integration** & **Continuous Deployment** scaffold based on Node.js, Git & Docker.
+An automated testing, continuous integration, and continuous deployment scaffold for Node.js, Git, and Docker.
 
 ## Guide document
 
@@ -8,21 +8,28 @@ https://idea2app.feishu.cn/docs/doccnlKWBaT81RyNXAsHDIWFwph
 
 ## Technology stack
 
-1. Runner & Assert framework: [Jest][1]
-2. Browser Operation library: [Playwright][2] ([community][3])
+1. Test runner: [Node.js test runner][1]
+2. Assertions and mocks: [Jest expect][2] and [Jest mock][3]
+3. Browser automation: [Playwright][4]
 
-## End-to-End testing
+## Tests
 
-### NPM script
+Use Node.js 26 and pnpm 12:
 
 ```shell
-pnpm e2e
+pnpm install
+pnpm test
 ```
 
-### VS Code
+Install Chromium before running the browser tests:
 
-press <key>F5</key>
+```shell
+pnpm exec playwright install chromium
+```
 
-[1]: https://jestjs.io/
-[2]: https://playwright.dev/
-[3]: https://playwright.tech/
+The browser tests expect the browser scaffold to be running at `http://localhost:3000`.
+
+[1]: https://nodejs.org/api/test.html
+[2]: https://jestjs.io/docs/expect
+[3]: https://jestjs.io/docs/mock-function-api
+[4]: https://playwright.dev/
