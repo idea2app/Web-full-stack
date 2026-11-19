@@ -1,10 +1,12 @@
 name: Deploy browser scaffold
 
 on:
+    workflow_dispatch:
     push:
         branches:
             - main
         paths:
+            - 'browser'
             - 'browser/**'
             - '.github/workflows/browser-deploy-production.yml'
 

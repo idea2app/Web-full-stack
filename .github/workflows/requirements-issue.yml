@@ -181,6 +181,7 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: write
+            actions: write
             issues: write
         steps:
             - uses: actions/checkout@v7.0.1
@@ -256,6 +257,10 @@ jobs:
                   if not slug:
                       slug = f"issue-{os.environ['ISSUE_NUMBER']}"
                   document_path = Path("document") / f"{slug}.md"
+                  if document_path.exists():
+                      document_path = Path("document") / f"{slug}-{os.environ['ISSUE_NUMBER']}.md"
+                      if document_path.exists():
+                          raise SystemExit("A document for this issue already exists.")
                   document_path.parent.mkdir(parents=True, exist_ok=True)
                   document_path.write_text(document.rstrip() + "\n", encoding="utf-8")
                   Path("validated-tasks.json").write_text(
@@ -357,6 +362,7 @@ jobs:
 
             - name: Vendor the selected scaffold as regular files
               env:
+                  GH_TOKEN: ${{ github.token }}
                   SCOPE: ${{ steps.validate.outputs.scope }}
                   ISSUE_NUMBER: ${{ github.event.issue.number }}
                   DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -391,4 +397,19 @@ jobs:
                       exit 1
                     fi
                     sleep "$((attempt * 2))"
+                  done
+
+                  case "$scope" in
+                    server)
+                    workflows=(server-deploy-production.yml)
+                    ;;
+                    browser)
+                    workflows=(browser-main.yml browser-deploy-production.yml)
+                    ;;
+                    mobile)
+                    workflows=(mobile-main.yml)
+                    ;;
+                  esac
+                  for workflow in "${workflows[@]}"; do
+                    gh workflow run "$workflow" --ref "$DEFAULT_BRANCH"
                   done

@@ -1,10 +1,12 @@
 name: Mobile scaffold CI and deployment
 
 on:
+    workflow_dispatch:
     push:
         branches:
             - main
         paths:
+            - 'mobile'
             - 'mobile/**'
             - '.github/workflows/mobile-main.yml'
 

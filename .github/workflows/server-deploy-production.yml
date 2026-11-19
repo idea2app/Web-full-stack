@@ -1,10 +1,12 @@
 name: Deploy server scaffold
 
 on:
+    workflow_dispatch:
     push:
         branches:
             - main
         paths:
+            - 'server'
             - 'server/**'
             - '.github/workflows/server-deploy-production.yml'
 

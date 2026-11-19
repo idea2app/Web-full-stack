@@ -1,10 +1,12 @@
 name: Browser scaffold CI and deployment
 
 on:
+    workflow_dispatch:
     push:
         branches:
             - main
         paths:
+            - 'browser'
             - 'browser/**'
             - '.github/workflows/browser-main.yml'
 
