@@ -1,0 +1,26 @@
+name: 需求收集
+description: 提交新的产品或技术需求
+title: '[需求] '
+labels:
+    - documentation
+body:
+    - type: textarea
+      id: requirement
+      attributes:
+          label: 需求正文
+          description: 使用 Markdown 描述需求、验收标准，并附上相关文件或图片。
+          render: markdown
+          placeholder: 请详细描述需求和预期结果。
+      validations:
+          required: true
+    - type: dropdown
+      id: scope
+      attributes:
+          label: 开发范围
+          description: 选择用于本需求的子脚手架目录。
+          options:
+              - server
+              - browser
+              - mobile
+      validations:
+          required: true

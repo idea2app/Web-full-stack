@@ -1,0 +1,49 @@
+name: Assign eligible issues to Copilot
+
+on:
+    issues:
+        types:
+            - opened
+            - closed
+
+permissions:
+    issues: write
+
+jobs:
+    assign:
+        if: >-
+            ${{
+              (github.event.action == 'opened' && !contains(github.event.issue.labels.*.name, 'documentation')) ||
+              github.event.action == 'closed'
+            }}
+        runs-on: ubuntu-latest
+        steps:
+            - name: Assign children when their parent closes
+              if: ${{ github.event.action == 'closed' }}
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  ISSUE_NUMBER: ${{ github.event.issue.number }}
+              run: |
+                  children=$(gh issue view "$ISSUE_NUMBER" --json subIssues --jq '.subIssues[] | select(.state == "OPEN") | .number')
+                  while IFS= read -r child; do
+                    [ -z "$child" ] && continue
+                    is_documentation=$(gh issue view "$child" --json labels --jq '[.labels[].name] | index("documentation") != null')
+                    [ "$is_documentation" = "true" ] && continue
+                    gh issue edit "$child" --add-assignee @copilot
+                  done <<< "$children"
+
+            - name: Check parent and assign Copilot
+              if: ${{ github.event.action == 'opened' && !contains(github.event.issue.labels.*.name, 'documentation') }}
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  ISSUE_NUMBER: ${{ github.event.issue.number }}
+              run: |
+                  parent=$(gh issue view "$ISSUE_NUMBER" --json parent --jq '.parent.number // empty')
+                  if [ -n "$parent" ]; then
+                    state=$(gh issue view "$parent" --json state --jq '.state')
+                    if [ "$state" != "CLOSED" ]; then
+                      echo "Parent issue #$parent is not closed; assignment is deferred."
+                      exit 0
+                    fi
+                  fi
+                  gh issue edit "$ISSUE_NUMBER" --add-assignee @copilot
