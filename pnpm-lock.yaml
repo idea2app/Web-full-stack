@@ -175,6 +175,9 @@ importers:
 
   .:
     dependencies:
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
       zx:
         specifier: 8.8.5
         version: 8.8.5
@@ -958,6 +961,11 @@ packages:
     resolution: {integrity: sha512-2eHWfjaoXgTBC2jNM1LRef62VQa0umtvRiDSk6HSzW7RvS5YtkabJrwYLLEKWBc8a5U2PTSCs+dJjUTJdlHsWQ==}
     engines: {node: '>= 14'}
 
+  yaml@2.9.1:
+    resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
   zx@8.8.5:
     resolution: {integrity: sha512-SNgDF5L0gfN7FwVOdEFguY3orU5AkfFZm9B5YSHog/UDHv+lvmd82ZAsOenOkQixigwH2+yyH198AwNdKhj+RA==}
     engines: {node: '>= 12.17.0'}
@@ -1612,5 +1620,7 @@ snapshots:
       strip-ansi: 7.2.0
 
   yaml@2.3.1: {}
+
+  yaml@2.9.1: {}
 
   zx@8.8.5: {}

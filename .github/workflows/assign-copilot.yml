@@ -32,7 +32,7 @@ jobs:
               run: pnpm install --frozen-lockfile
 
             - name: Assign issue to Copilot
-              run: pnpm exec zx script/assign-issue.ts
+              run: pnpm exec zx script/assign-issue.ts "$ISSUE_NUMBER" "$ISSUE_ACTION"
               env:
                   GH_TOKEN: ${{ github.token }}
                   ISSUE_NUMBER: ${{ github.event.issue.number }}

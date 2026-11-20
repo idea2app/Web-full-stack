@@ -1,6 +1,6 @@
-# Web Full-stack Scaffold
+# Web full-stack scaffold
 
-An automated testing, continuous integration, and continuous deployment scaffold for Node.js, Git, and Docker.
+A development scaffold for full-stack Web projects built with TypeScript.
 
 ## Guide document
 
@@ -21,13 +21,13 @@ pnpm install
 pnpm test
 ```
 
-Install Chromium before running the browser tests:
-
-```shell
-pnpm exec playwright install chromium
-```
-
 The browser tests expect the browser scaffold to be running at `http://localhost:3000`.
+
+## Requirement automation
+
+Requirement issues can target multiple scaffold directories and select Copilot, Claude Code, Gemini CLI, OpenAI Codex, or Kimi CLI. Add the selected provider's API token as a repository secret: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, or `MOONSHOT_API_KEY`. Copilot uses the workflow token unless `COPILOT_GITHUB_TOKEN` is configured.
+
+The workflow first textifies the issue and attachments, then opens a review pull request that queues the requirement in `/task.yml`. Merging that change triggers requirement analysis and task issue creation.
 
 [1]: https://nodejs.org/api/test.html
 [2]: https://jestjs.io/docs/expect

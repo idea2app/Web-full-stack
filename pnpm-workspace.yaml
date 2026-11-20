@@ -1,4 +1,7 @@
 packages:
     - .
+    - server
+    - browser
+    - mobile
 allowBuilds:
     '@swc/core': true

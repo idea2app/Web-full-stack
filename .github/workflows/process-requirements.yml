@@ -1,0 +1,73 @@
+name: Analyze queued requirements
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - task.yml
+
+permissions:
+    actions: write
+    contents: write
+    issues: write
+    pull-requests: write
+
+concurrency:
+    group: requirement-tasks
+    cancel-in-progress: false
+
+jobs:
+    process:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7.0.1
+              with:
+                  fetch-depth: 0
+                  submodules: recursive
+
+            - uses: actions/setup-node@v7.1.0
+              with:
+                  node-version: 26
+
+            - uses: actions/setup-python@v7.1.0
+              with:
+                  python-version: '3.x'
+
+            - uses: pnpm/action-setup@v6.1.1
+              with:
+                  version: 12.21.0
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Analyze one queued requirement and create task issues
+              id: process
+              run: pnpm exec zx script/process-tasks.ts --default-branch "$DEFAULT_BRANCH"
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+                  COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+                  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+                  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+                  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+                  MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+
+            - name: Vendor selected scaffold files
+              run: pnpm exec zx script/vendor-scaffold.ts --scopes "$SCOPES"
+              env:
+                  SCOPES: ${{ steps.process.outputs.scopes }}
+
+            - uses: peter-evans/create-pull-request@v8.1.3
+              with:
+                  add-paths: |
+                      .gitmodules
+                      task.yml
+                      server/
+                      browser/
+                      mobile/
+                  branch: requirement-tasks
+                  commit-message: 'chore: process queued requirements'
+                  title: 'chore: process queued requirements'
+                  body: 'Create task issues and vendor selected scaffold files.'
+                  delete-branch: true

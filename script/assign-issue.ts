@@ -4,26 +4,30 @@ import { $ } from 'zx';
 
 $.verbose = true;
 
-const issueNumber = process.env.ISSUE_NUMBER!;
-const action = process.env.ISSUE_ACTION!;
+const [issueNumber, action] = process.argv.slice(2);
+if (!issueNumber || !action)
+    throw new Error('Issue number and action are required.');
 
 if (action === 'closed') {
     const { stdout } = await $`gh issue view ${issueNumber} --json subIssues`;
     const { subIssues } = JSON.parse(stdout);
-    for (const issue of subIssues.filter(
-        (candidate: { state: string }) => candidate.state === 'OPEN',
+    for (const { number, state } of subIssues.filter(
+        ({ state }: { state: string }) => state === 'OPEN',
     )) {
         const { stdout: result } =
-            await $`gh issue view ${issue.number} --json labels`;
+            await $`gh issue view ${number} --json labels`;
         const { labels } = JSON.parse(result);
         if (
             labels.some(
-                (label: { name: string }) => label.name === 'documentation',
+                ({ name }: { name: string }) => name === 'documentation',
+            ) ||
+            !labels.some(
+                ({ name }: { name: string }) => name === 'agent-copilot',
             )
         ) {
             continue;
         }
-        await $`gh issue edit ${issue.number} --add-assignee @copilot`;
+        await $`gh issue edit ${number} --add-assignee @copilot`;
     }
 } else if (action === 'opened') {
     const { stdout } =
@@ -31,7 +35,10 @@ if (action === 'closed') {
     const issue = JSON.parse(stdout);
     if (
         issue.labels.some(
-            (label: { name: string }) => label.name === 'documentation',
+            ({ name }: { name: string }) => name === 'documentation',
+        ) ||
+        !issue.labels.some(
+            ({ name }: { name: string }) => name === 'agent-copilot',
         )
     ) {
         process.exit(0);
