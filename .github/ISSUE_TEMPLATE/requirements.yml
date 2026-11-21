@@ -29,6 +29,7 @@ body:
       attributes:
           label: AI agent
           description: Select the coding agent for the generated task issues.
+          default: 0
           options:
               - Copilot
               - Claude Code

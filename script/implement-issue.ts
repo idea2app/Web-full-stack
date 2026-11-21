@@ -1,21 +1,11 @@
 #! /usr/bin/env node
 
-import { fs } from 'zx';
+import { argv, fs } from 'zx';
 import { runAI, type AIEngine } from './ai-cli.ts';
 
-const args = process.argv.slice(2);
-
-const argument = (name: string, required = true) => {
-    const index = args.indexOf(name);
-    if (index < 0 || !args[index + 1]) {
-        if (!required) return undefined;
-        throw new Error(`Missing required argument: ${name}`);
-    }
-    return args[index + 1];
-};
-
-const issueNumber = argument('--issue-number');
-const issue = await fs.readJSON(argument('--issue-file'));
+const issueNumber = String(argv['issue-number'] ?? '');
+const issue = await fs.readJSON(String(argv['issue-file'] ?? ''));
+if (!issueNumber) throw new Error('Issue number is required.');
 const issueTitle = issue.title as string;
 const issueBody = (issue.body ?? '') as string;
 const labels: string[] = issue.labels.map(({ name }: { name: string }) => name);

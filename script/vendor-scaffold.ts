@@ -1,13 +1,13 @@
 #! /usr/bin/env node
 
 import { rm } from 'node:fs/promises';
-import { $ } from 'zx';
+import { $, argv } from 'zx';
 
 $.verbose = true;
 
-const args = process.argv.slice(2);
-const scopes =
-    args[args.indexOf('--scopes') + 1]?.split(/\s+/).filter(Boolean) ?? [];
+const scopes = String(argv.scopes ?? '')
+    .split(/\s+/)
+    .filter(Boolean);
 const allowedScopes = new Set(['server', 'browser', 'mobile']);
 
 for (const scope of new Set(scopes)) {

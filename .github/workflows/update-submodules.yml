@@ -18,19 +18,8 @@ jobs:
                   fetch-depth: 0
                   submodules: recursive
 
-            - uses: actions/setup-node@v7.1.0
-              with:
-                  node-version: 26
-
-            - uses: pnpm/action-setup@v6.1.1
-              with:
-                  version: 12.21.0
-
-            - name: Install dependencies
-              run: pnpm install --frozen-lockfile
-
-            - name: Update submodules and request review
-              run: pnpm exec zx script/update-submodules.ts
+            - name: Update scaffold submodules
+              run: git submodule update --remote --recursive
 
             - uses: peter-evans/create-pull-request@v8.1.3
               with:
