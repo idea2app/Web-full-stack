@@ -18,19 +18,14 @@ jobs:
                   fetch-depth: 0
                   submodules: recursive
 
-            - uses: actions/setup-node@v7.1.0
+            - name: Update scaffold submodules
+              run: git submodule update --remote --recursive
+
+            - uses: peter-evans/create-pull-request@v8.1.3
               with:
-                  node-version: 26
-
-            - uses: pnpm/action-setup@v6.1.1
-              with:
-                  version: 12.21.0
-
-            - name: Install dependencies
-              run: pnpm install --frozen-lockfile
-
-            - name: Update submodules and request review
-              run: pnpm exec zx script/update-submodules.ts
-              env:
-                  GH_TOKEN: ${{ github.token }}
-                  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+                  branch: automation/update-submodules
+                  commit-message: 'chore: update scaffold submodules'
+                  title: 'chore: update scaffold submodules'
+                  body: 'Updates the server, browser, and mobile scaffold submodules.'
+                  reviewers: idea2app/team-1
+                  delete-branch: true

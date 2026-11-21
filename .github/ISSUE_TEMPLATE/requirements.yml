@@ -13,14 +13,28 @@ body:
           placeholder: Describe the requirement and expected outcome.
       validations:
           required: true
-    - type: dropdown
-      id: scope
+    - type: checkboxes
+      id: scopes
       attributes:
-          label: Development scope
-          description: Select the scaffold directory for this requirement.
+          label: Development scopes
+          description: Select every scaffold directory affected by this requirement.
           options:
-              - server
-              - browser
-              - mobile
+              - label: server
+              - label: browser
+              - label: mobile
+      validations:
+          required: true
+    - type: dropdown
+      id: engine
+      attributes:
+          label: AI agent
+          description: Select the coding agent for the generated task issues.
+          default: 0
+          options:
+              - Copilot
+              - Claude Code
+              - Gemini CLI
+              - OpenAI Codex
+              - Kimi CLI
       validations:
           required: true

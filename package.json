@@ -8,6 +8,10 @@
         "node": ">=26"
     },
     "private": true,
+    "dependencies": {
+        "yaml": "2.9.1",
+        "zx": "8.8.5"
+    },
     "devDependencies": {
         "@swc-node/register": "1.12.1",
         "@swc/core": "1.16.21",
@@ -31,12 +35,10 @@
     },
     "scripts": {
         "prepare": "husky install",
+        "pretest": "playwright install chromium",
         "lint": "lint-staged",
         "test-server": "node --import @swc-node/register/esm-register --test test/server/*.spec.ts",
         "test-browser": "node --import @swc-node/register/esm-register --test test/browser/*.spec.ts",
         "test": "pnpm lint && pnpm test-server && pnpm test-browser"
-    },
-    "dependencies": {
-        "zx": "8.8.5"
     }
 }
