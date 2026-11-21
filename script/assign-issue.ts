@@ -14,10 +14,12 @@ if (!issueNumber || !['opened', 'closed'].includes(action) || !defaultBranch)
     throw new Error('Issue number, action, and default branch are required.');
 
 const engineByLabel: Record<string, AIEngine> = {
-    'agent-claude-code': 'claude-code',
-    'agent-gemini-cli': 'gemini-cli',
     'agent-openai-codex': 'openai-codex',
+    'agent-gemini-cli': 'gemini-cli',
+    'agent-claude-code': 'claude-code',
+    'agent-qoder-cli': 'qoder-cli',
     'agent-kimi-cli': 'kimi-cli',
+    'agent-kilo-cli': 'kilo-cli',
 };
 
 async function routeIssue(number: number | string, labels: { name: string }[]) {

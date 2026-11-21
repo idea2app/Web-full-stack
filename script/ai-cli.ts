@@ -3,14 +3,22 @@
 import { $ } from 'zx';
 
 export type AIEngine =
-    'copilot' | 'claude-code' | 'gemini-cli' | 'openai-codex' | 'kimi-cli';
+    | 'copilot'
+    | 'openai-codex'
+    | 'gemini-cli'
+    | 'claude-code'
+    | 'qoder-cli'
+    | 'kimi-cli'
+    | 'kilo-cli';
 
 const credentials: Record<AIEngine, string[]> = {
     copilot: ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN'],
-    'claude-code': ['ANTHROPIC_API_KEY'],
-    'gemini-cli': ['GEMINI_API_KEY'],
     'openai-codex': ['OPENAI_API_KEY'],
+    'gemini-cli': ['GEMINI_API_KEY'],
+    'claude-code': ['ANTHROPIC_API_KEY'],
+    'qoder-cli': ['QODER_PERSONAL_ACCESS_TOKEN'],
     'kimi-cli': ['MOONSHOT_API_KEY'],
+    'kilo-cli': ['KILO_CONFIG_CONTENT'],
 };
 
 async function runWithCredentials(
@@ -55,6 +63,40 @@ export const runCopilot = (prompt: string, attachments: string[] = []) =>
         return stdout.trim();
     });
 
+export const runOpenAICodex = (
+    prompt: string,
+    attachments: string[] = [],
+    allowChanges = false,
+) =>
+    runWithCredentials('openai-codex', async () => {
+        const sandbox = allowChanges ? 'workspace-write' : 'read-only';
+        const approval = allowChanges ? ['--approve-for-me'] : [];
+        const { stdout } =
+            await $`pnpm dlx --package=@openai/codex@0.171.0 codex exec --sandbox ${sandbox} ${approval} ${promptWithFiles(
+                prompt,
+                attachments,
+            )}`;
+        return stdout.trim();
+    });
+
+export const runGeminiCLI = (
+    prompt: string,
+    attachments: string[] = [],
+    allowChanges = false,
+) =>
+    runWithCredentials('gemini-cli', async () => {
+        const permissions = allowChanges
+            ? ['--yolo']
+            : ['--approval-mode', 'plan'];
+        const { stdout } =
+            await $`pnpm dlx --package=@google/gemini-cli@0.70.0 gemini --prompt ${promptWithFiles(
+                prompt,
+                attachments,
+            )} --output-format text ${permissions}`;
+
+        return stdout.trim();
+    });
+
 export const runClaudeCode = (
     prompt: string,
     attachments: string[] = [],
@@ -77,37 +119,19 @@ export const runClaudeCode = (
         return stdout.trim();
     });
 
-export const runGeminiCLI = (
+export const runQoderCLI = (
     prompt: string,
     attachments: string[] = [],
     allowChanges = false,
 ) =>
-    runWithCredentials('gemini-cli', async () => {
-        const permissions = allowChanges
-            ? ['--yolo']
-            : ['--approval-mode', 'plan'];
+    runWithCredentials('qoder-cli', async () => {
+        const permissions = allowChanges ? ['--yolo'] : [];
         const { stdout } =
-            await $`pnpm dlx --package=@google/gemini-cli@0.70.0 gemini --prompt ${promptWithFiles(
+            await $`pnpm dlx --package=@qoder-ai/qodercli@1.1.95 qoder -p ${promptWithFiles(
                 prompt,
                 attachments,
             )} --output-format text ${permissions}`;
 
-        return stdout.trim();
-    });
-
-export const runOpenAICodex = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
-    runWithCredentials('openai-codex', async () => {
-        const sandbox = allowChanges ? 'workspace-write' : 'read-only';
-        const approval = allowChanges ? ['--approve-for-me'] : [];
-        const { stdout } =
-            await $`pnpm dlx --package=@openai/codex@0.171.0 codex exec --sandbox ${sandbox} ${approval} ${promptWithFiles(
-                prompt,
-                attachments,
-            )}`;
         return stdout.trim();
     });
 
@@ -121,6 +145,23 @@ export const runKimiCLI = (prompt: string, attachments: string[] = []) =>
         return stdout.trim();
     });
 
+export const runKiloCLI = (
+    prompt: string,
+    attachments: string[] = [],
+    allowChanges = false,
+) =>
+    runWithCredentials('kilo-cli', async () => {
+        const files = attachments.flatMap(path => ['--file', path]);
+        const permissions = allowChanges ? ['--auto'] : [];
+        const { stdout } =
+            await $`pnpm dlx --package=@kilocode/cli@7.8.32 kilo run ${promptWithFiles(
+                prompt,
+                attachments,
+            )} ${permissions} ${files}`;
+
+        return stdout.trim();
+    });
+
 export async function runAI(
     engine: AIEngine,
     prompt: string,
@@ -130,13 +171,17 @@ export async function runAI(
     switch (engine) {
         case 'copilot':
             return runCopilot(prompt, attachments);
-        case 'claude-code':
-            return runClaudeCode(prompt, attachments, allowChanges);
-        case 'gemini-cli':
-            return runGeminiCLI(prompt, attachments, allowChanges);
         case 'openai-codex':
             return runOpenAICodex(prompt, attachments, allowChanges);
+        case 'gemini-cli':
+            return runGeminiCLI(prompt, attachments, allowChanges);
+        case 'claude-code':
+            return runClaudeCode(prompt, attachments, allowChanges);
+        case 'qoder-cli':
+            return runQoderCLI(prompt, attachments, allowChanges);
         case 'kimi-cli':
             return runKimiCLI(prompt, attachments);
+        case 'kilo-cli':
+            return runKiloCLI(prompt, attachments, allowChanges);
     }
 }

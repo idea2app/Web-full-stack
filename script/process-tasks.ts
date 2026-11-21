@@ -21,10 +21,12 @@ if (!defaultBranch)
     );
 const validEngines = new Set([
     'copilot',
-    'claude-code',
-    'gemini-cli',
     'openai-codex',
+    'gemini-cli',
+    'claude-code',
+    'qoder-cli',
     'kimi-cli',
+    'kilo-cli',
 ]);
 const validScopes = new Set(['server', 'browser', 'mobile']);
 

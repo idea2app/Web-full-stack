@@ -12,10 +12,12 @@ const issueTitle = issue.title as string;
 const issueBody = (issue.body ?? '') as string;
 const labels: string[] = issue.labels.map(({ name }: { name: string }) => name);
 const engineByLabel: Record<string, AIEngine> = {
-    'agent-claude-code': 'claude-code',
-    'agent-gemini-cli': 'gemini-cli',
     'agent-openai-codex': 'openai-codex',
+    'agent-gemini-cli': 'gemini-cli',
+    'agent-claude-code': 'claude-code',
+    'agent-qoder-cli': 'qoder-cli',
     'agent-kimi-cli': 'kimi-cli',
+    'agent-kilo-cli': 'kilo-cli',
 };
 const engine = labels.map(label => engineByLabel[label]).find(Boolean);
 if (!engine)

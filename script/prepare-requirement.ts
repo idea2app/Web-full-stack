@@ -30,10 +30,12 @@ const scopes = rawScopes.filter(
 );
 const engineByLabel: Record<string, AIEngine> = {
     Copilot: 'copilot',
-    'Claude Code': 'claude-code',
-    'Gemini CLI': 'gemini-cli',
     'OpenAI Codex': 'openai-codex',
+    'Gemini CLI': 'gemini-cli',
+    'Claude Code': 'claude-code',
+    'Qoder CLI': 'qoder-cli',
     'Kimi CLI': 'kimi-cli',
+    'Kilo CLI': 'kilo-cli',
 };
 const engine = Object.hasOwn(engineByLabel, fields.engine)
     ? engineByLabel[fields.engine]

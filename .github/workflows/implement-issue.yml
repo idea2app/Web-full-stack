@@ -50,10 +50,12 @@ jobs:
                       [
                           .labels[].name
                           | select(
-                              . == "agent-claude-code" or
-                              . == "agent-gemini-cli" or
                               . == "agent-openai-codex" or
-                              . == "agent-kimi-cli"
+                              . == "agent-gemini-cli" or
+                              . == "agent-claude-code" or
+                              . == "agent-qoder-cli" or
+                              . == "agent-kimi-cli" or
+                              . == "agent-kilo-cli"
                           )
                       ][0] // "copilot"
                   ' "$ISSUE_DATA_FILE")
@@ -83,10 +85,12 @@ jobs:
                   ISSUE_NUMBER: ${{ inputs.issue_number }}
                   ISSUE_DATA_FILE: ${{ runner.temp }}/issue.json
                   COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
-                  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-                  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
                   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+                  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+                  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+                  QODER_PERSONAL_ACCESS_TOKEN: ${{ secrets.QODER_PERSONAL_ACCESS_TOKEN }}
                   MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+                  KILO_CONFIG_CONTENT: ${{ secrets.KILO_CONFIG_CONTENT }}
 
             - uses: peter-evans/create-pull-request@v8.1.3
               if: ${{ steps.agent.outputs.engine != 'copilot' }}

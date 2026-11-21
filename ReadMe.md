@@ -44,12 +44,14 @@ The issue-creation workflow listens both for closed issues and for changes to `d
 
 Configure the provider secret for each non-Copilot agent used by the issue form:
 
-| Agent        | Repository secret   |
-| ------------ | ------------------- |
-| Claude Code  | `ANTHROPIC_API_KEY` |
-| Gemini CLI   | `GEMINI_API_KEY`    |
-| OpenAI Codex | `OPENAI_API_KEY`    |
-| Kimi CLI     | `MOONSHOT_API_KEY`  |
+| Agent        | Repository secret             | Description                                                             |
+| ------------ | ----------------------------- | ----------------------------------------------------------------------- |
+| Claude Code  | `ANTHROPIC_API_KEY`           |                                                                         |
+| Gemini CLI   | `GEMINI_API_KEY`              |                                                                         |
+| OpenAI Codex | `OPENAI_API_KEY`              |                                                                         |
+| Kimi CLI     | `MOONSHOT_API_KEY`            |                                                                         |
+| Kilo CLI     | `KILO_CONFIG_CONTENT`         | JSON config with model and provider credentials; see [Kilo CLI docs][6] |
+| Qoder CLI    | `QODER_PERSONAL_ACCESS_TOKEN` |                                                                         |
 
 Copilot uses the workflow token unless `COPILOT_GITHUB_TOKEN` is configured.
 
@@ -75,3 +77,4 @@ Deployment workflows build and deploy their matching scaffold folder; the weekly
 [3]: https://jestjs.io/docs/mock-function-api
 [4]: https://playwright.dev/
 [5]: https://idea2app.feishu.cn/docs/doccnlKWBaT81RyNXAsHDIWFwph
+[6]: https://kilo.ai/docs/code-with-ai/platforms/cli
