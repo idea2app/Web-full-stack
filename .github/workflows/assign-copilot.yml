@@ -36,8 +36,11 @@ jobs:
             - name: Assign issue to Copilot
               run: >-
                   pnpm exec zx script/assign-issue.ts
-                  "${{ github.event.issue.number }}"
-                  "${{ github.event.action }}"
-                  "${{ github.event.repository.default_branch }}"
+                  "$ISSUE_NUMBER"
+                  "$ISSUE_ACTION"
+                  "$DEFAULT_BRANCH"
               env:
                   GH_TOKEN: ${{ github.token }}
+                  ISSUE_NUMBER: ${{ github.event.issue.number }}
+                  ISSUE_ACTION: ${{ github.event.action }}
+                  DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}

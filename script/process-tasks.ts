@@ -191,11 +191,15 @@ for (const { directory, number } of candidates) {
     };
 
     for (const [index, task] of plan.tasks.entries()) {
-        changed = await ensureTaskIssue(
-            taskContext,
-            index,
-            task as StoredRequirementTask,
-        );
+        if (
+            await ensureTaskIssue(
+                taskContext,
+                index,
+                task as StoredRequirementTask,
+            )
+        )
+            changed = true;
+
         if (task.delegated) continue;
 
         const engine = plan.engine as AIEngine;

@@ -19,7 +19,6 @@ concurrency:
 
 jobs:
     implement:
-        if: ${{ !contains(github.event.issue.labels.*.name || '', 'agent-copilot') }}
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v7.0.1
@@ -44,26 +43,38 @@ jobs:
                   ISSUE_NUMBER: ${{ inputs.issue_number }}
                   ISSUE_DATA_FILE: ${{ runner.temp }}/issue.json
 
-            - name: Select Kimi CLI
+            - name: Select agent
               id: agent
               run: |
-                  KIMI_CLI=$(jq -r '[.labels[].name] | any(. == "agent-kimi-cli")' "$ISSUE_DATA_FILE")
-                  echo "kimi=$KIMI_CLI" >> "$GITHUB_OUTPUT"
+                  ENGINE=$(jq -r '
+                      [
+                          .labels[].name
+                          | select(
+                              . == "agent-claude-code" or
+                              . == "agent-gemini-cli" or
+                              . == "agent-openai-codex" or
+                              . == "agent-kimi-cli"
+                          )
+                      ][0] // "copilot"
+                  ' "$ISSUE_DATA_FILE")
+
+                  echo "engine=$ENGINE" >> "$GITHUB_OUTPUT"
               env:
                   ISSUE_DATA_FILE: ${{ runner.temp }}/issue.json
 
             - uses: actions/setup-python@v7.1.0
-              if: ${{ steps.agent.outputs.kimi == 'true' }}
+              if: ${{ steps.agent.outputs.engine == 'agent-kimi-cli' }}
               with:
                   python-version: '3.x'
 
             - name: Install Kimi CLI
-              if: ${{ steps.agent.outputs.kimi == 'true' }}
+              if: ${{ steps.agent.outputs.engine == 'agent-kimi-cli' }}
               run: |
                   python -m pip install --user kimi-cli==1.52.0
                   echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
             - name: Implement the issue
+              if: ${{ steps.agent.outputs.engine != 'copilot' }}
               run: >-
                   pnpm exec zx script/implement-issue.ts
                   --issue-number "$ISSUE_NUMBER"
@@ -78,6 +89,7 @@ jobs:
                   MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
 
             - uses: peter-evans/create-pull-request@v8.1.3
+              if: ${{ steps.agent.outputs.engine != 'copilot' }}
               with:
                   token: ${{ github.token }}
                   branch: issue-${{ inputs.issue_number }}
