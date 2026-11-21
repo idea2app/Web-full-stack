@@ -2,11 +2,13 @@
     "compilerOptions": {
         "target": "ES2022",
         "module": "ESNext",
-        "moduleResolution": "Bundler",
+        "moduleResolution": "bundler",
         "esModuleInterop": true,
+        "rewriteRelativeImportExtensions": true,
+        "allowImportingTsExtensions": true,
         "strict": true,
-        "skipLibCheck": true,
-        "types": ["node"]
+        "types": ["node"],
+        "skipLibCheck": true
     },
     "include": ["script/**/*.ts", "test/**/*.ts"]
 }

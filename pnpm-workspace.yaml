@@ -1,4 +1,8 @@
 packages:
     - .
+    - server
+    - browser
+    - mobile
+autoInstallPeers: false
 allowBuilds:
     '@swc/core': true

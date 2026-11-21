@@ -14,13 +14,30 @@ body:
       validations:
           required: true
     - type: dropdown
-      id: scope
+      id: scopes
       attributes:
-          label: Development scope
-          description: Select the scaffold directory for this requirement.
+          label: Development scopes
+          description: Select at least one scaffold directory affected by this requirement.
+          multiple: true
           options:
               - server
               - browser
               - mobile
+      validations:
+          required: true
+    - type: dropdown
+      id: engine
+      attributes:
+          label: AI agent
+          description: Select the coding agent for the generated task issues.
+          default: 0
+          options:
+              - Copilot
+              - OpenAI Codex
+              - Gemini CLI
+              - Claude Code
+              - Qoder CLI
+              - Kimi CLI
+              - Kilo CLI
       validations:
           required: true
