@@ -1,6 +1,7 @@
 #! /usr/bin/env node
 
 import { $, argv } from 'zx';
+
 import type { AIEngine } from './ai-cli.ts';
 
 $.verbose = true;
@@ -8,6 +9,7 @@ $.verbose = true;
 const issueNumber = String(argv._[0] ?? '');
 const action = String(argv._[1] ?? '');
 const defaultBranch = String(argv._[2] ?? '');
+
 if (!issueNumber || !['opened', 'closed'].includes(action) || !defaultBranch)
     throw new Error('Issue number, action, and default branch are required.');
 
@@ -18,11 +20,9 @@ const engineByLabel: Record<string, AIEngine> = {
     'agent-kimi-cli': 'kimi-cli',
 };
 
-const routeIssue = async (
-    number: number | string,
-    labels: { name: string }[],
-) => {
+async function routeIssue(number: number | string, labels: { name: string }[]) {
     if (labels.some(({ name }) => name === 'documentation')) return;
+
     const engine =
         labels.map(({ name }) => engineByLabel[name]).find(Boolean) ??
         'copilot';
@@ -32,7 +32,7 @@ const routeIssue = async (
     } else {
         await $`gh workflow run implement-issue.yml --ref ${defaultBranch} -f ${`issue_number=${number}`}`;
     }
-};
+}
 
 if (action === 'opened') {
     const { stdout } =
@@ -42,9 +42,8 @@ if (action === 'opened') {
         issue.labels.some(
             ({ name }: { name: string }) => name === 'documentation',
         )
-    ) {
+    )
         process.exit(0);
-    }
 
     if (issue.parent) {
         const { stdout: parent } =
@@ -60,12 +59,12 @@ if (action === 'opened') {
             process.exit(0);
         }
     }
-
     await routeIssue(issueNumber, issue.labels);
 } else {
     const { stdout } = await $`gh issue view ${issueNumber} --json subIssues`;
     const { subIssues } = JSON.parse(stdout);
-    for (const { number, state } of subIssues.filter(
+
+    for (const { number } of subIssues.filter(
         ({ state }: { state: string }) => state === 'OPEN',
     )) {
         const { stdout: result } =

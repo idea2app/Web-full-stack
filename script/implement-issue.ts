@@ -5,7 +5,9 @@ import { runAI, type AIEngine } from './ai-cli.ts';
 
 const issueNumber = String(argv['issue-number'] ?? '');
 const issue = await fs.readJSON(String(argv['issue-file'] ?? ''));
+
 if (!issueNumber) throw new Error('Issue number is required.');
+
 const issueTitle = issue.title as string;
 const issueBody = (issue.body ?? '') as string;
 const labels: string[] = issue.labels.map(({ name }: { name: string }) => name);

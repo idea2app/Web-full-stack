@@ -27,5 +27,4 @@ jobs:
                   commit-message: 'chore: update scaffold submodules'
                   title: 'chore: update scaffold submodules'
                   body: 'Updates the server, browser, and mobile scaffold submodules.'
-                  reviewers: idea2app/team-1
                   delete-branch: true

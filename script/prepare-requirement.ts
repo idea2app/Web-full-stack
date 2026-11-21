@@ -1,9 +1,11 @@
 #! /usr/bin/env node
 
+import 'array-unique-proposal';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { $, argv, fs, path } from 'zx';
-import { parse, stringify } from 'yaml';
+import { stringify } from 'yaml';
+
 import { runAI, type AIEngine } from './ai-cli.ts';
 import { documentDirectory } from './issue-document.ts';
 import { isValidRequirementTask } from './requirement-task.ts';
@@ -14,6 +16,7 @@ const issueNumber = String(argv['issue-number'] ?? '');
 const issueTitle = String(argv['issue-title'] ?? '');
 const issueBody = String(argv['issue-body'] ?? '');
 const fields = JSON.parse(String(argv.fields ?? '{}'));
+
 if (!issueNumber || !issueTitle || !issueBody)
     throw new Error('Issue number, title, and body are required.');
 
@@ -37,29 +40,26 @@ const engine = Object.hasOwn(engineByLabel, fields.engine)
     : undefined;
 if (!scopes.length || scopes.some(scope => !allowedScopes.has(scope)))
     throw new Error('Select one or more valid development scopes.');
+
 if (!engine) throw new Error('Select a supported AI agent.');
 
-const allowedAttachment = (rawUrl: string) => {
-    try {
-        const url = new URL(rawUrl);
-        return (
-            url.protocol === 'https:' &&
-            ((url.hostname === 'github.com' &&
-                url.pathname.startsWith('/user-attachments/')) ||
-                (url.hostname.endsWith('.githubusercontent.com') &&
-                    url.hostname !== 'raw.githubusercontent.com'))
-        );
-    } catch {
-        return false;
-    }
-};
-const urls = [
-    ...new Set(
-        (issueBody.match(/https:\/\/[^\s<>)]+/g) ?? []).map((url: string) =>
-            url.replace(/[.,!?;:]+$/, ''),
-        ),
-    ),
-].filter(allowedAttachment);
+function allowedAttachment(rawUrl: string) {
+    const url = URL.parse(rawUrl);
+
+    return (
+        !!url &&
+        url.protocol === 'https:' &&
+        ((url.hostname === 'github.com' &&
+            url.pathname.startsWith('/user-attachments/')) ||
+            (url.hostname.endsWith('.githubusercontent.com') &&
+                url.hostname !== 'raw.githubusercontent.com'))
+    );
+}
+const urls = (issueBody.match(/https:\/\/[^\s<>)]+/g) ?? [])
+    .map((url: string) => url.replace(/[.,!?;:]+$/, ''))
+    .uniqueBy()
+    .filter(allowedAttachment);
+
 if (urls.length > 10)
     throw new Error('An issue can have at most 10 attachments.');
 
@@ -68,13 +68,14 @@ const attachmentDirectory = await mkdtemp(
     path.join(tmpdir(), `issue-${issueNumber}-`),
 );
 let attachmentText = 'No attachments were provided.';
+
 try {
     const attachments: string[] = [];
+
     for (const [index, rawUrl] of urls.entries()) {
-        const url = new URL(rawUrl);
+        const { pathname } = new URL(rawUrl);
         const extension =
-            path.extname(url.pathname).match(/^\.[a-z0-9]{1,8}$/i)?.[0] ??
-            '.bin';
+            path.extname(pathname).match(/^\.[a-z0-9]{1,8}$/i)?.[0] ?? '.bin';
         const output = path.join(
             attachmentDirectory,
             `attachment-${index + 1}${extension}`,
@@ -82,6 +83,7 @@ try {
         await $({
             env: { PATH: process.env.PATH },
         })`curl --fail --silent --show-error --location --max-redirs 5 --connect-timeout 10 --max-time 20 --max-filesize 10485760 --proto =https --proto-redir =https --output ${output} ${rawUrl}`;
+
         attachments.push(output);
     }
 
@@ -92,6 +94,7 @@ Issue title: ${issueTitle}
 Selected development scopes: ${scopes.join(', ')}
 
 Return only the converted attachment contents as Markdown, labeling each with its filename.`;
+
         attachmentText = await runAI(engine, prompt, attachments);
     }
 } finally {
@@ -113,6 +116,7 @@ ${issueBody.trim()}
 ## Attachment text
 
 ${attachmentText.trim()}`;
+
 const contentPath = path.join(directory, 'content.md');
 await fs.outputFile(contentPath, `${content.trimEnd()}\n`, 'utf8');
 
@@ -137,13 +141,17 @@ Each task must have one or more labels chosen only from ${JSON.stringify(
 <requirement-document>
 ${content}
 </requirement-document>`;
+
 const response = await runAI(engine, prompt);
 const start = response.indexOf('{');
 if (start < 0)
     throw new Error('The selected AI agent did not return a JSON plan.');
+
 const plan = JSON.parse(response.slice(start));
+
 const isValidTask = (task: unknown, index: number) =>
     isValidRequirementTask(task, index, scopes);
+
 if (
     !plan ||
     typeof plan !== 'object' ||
@@ -151,9 +159,8 @@ if (
     !plan.tasks.length ||
     plan.tasks.length > 10 ||
     !plan.tasks.every(isValidTask)
-) {
+)
     throw new Error('The generated task list is invalid.');
-}
 
 const tasks = {
     issue: Number(issueNumber),
@@ -161,16 +168,13 @@ const tasks = {
     engine,
     scopes,
     status: 'pending',
-    tasks: plan.tasks.map((task: any) => ({
-        ...task,
-        issue: null,
-    })),
+    tasks: plan.tasks.map((task: any) => ({ ...task, issue: null })),
 };
 await fs.outputFile(
     path.join(directory, 'tasks.yml'),
     stringify(tasks),
     'utf8',
 );
-
 await $`gh issue edit ${issueNumber} --add-label ${`agent-${engine}`}`;
+
 await fs.appendFile(process.env.GITHUB_OUTPUT!, `scopes=${scopes.join(' ')}\n`);

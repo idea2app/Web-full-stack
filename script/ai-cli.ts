@@ -3,11 +3,7 @@
 import { $ } from 'zx';
 
 export type AIEngine =
-    | 'copilot'
-    | 'claude-code'
-    | 'gemini-cli'
-    | 'openai-codex'
-    | 'kimi-cli';
+    'copilot' | 'claude-code' | 'gemini-cli' | 'openai-codex' | 'kimi-cli';
 
 const credentials: Record<AIEngine, string[]> = {
     copilot: ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN'],
@@ -17,10 +13,10 @@ const credentials: Record<AIEngine, string[]> = {
     'kimi-cli': ['MOONSHOT_API_KEY'],
 };
 
-const runWithCredentials = async (
+async function runWithCredentials(
     engine: AIEngine,
     action: () => Promise<string>,
-) => {
+) {
     const savedCredentials = new Map(
         Object.values(credentials)
             .flat()
@@ -35,12 +31,11 @@ const runWithCredentials = async (
     try {
         return await action();
     } finally {
-        for (const [name, value] of savedCredentials) {
+        for (const [name, value] of savedCredentials)
             if (value === undefined) delete process.env[name];
             else process.env[name] = value;
-        }
     }
-};
+}
 
 const promptWithFiles = (prompt: string, attachments: string[]) =>
     [
@@ -56,6 +51,7 @@ export const runCopilot = (prompt: string, attachments: string[] = []) =>
                 prompt,
                 attachments,
             )} ${args}`;
+
         return stdout.trim();
     });
 
@@ -77,6 +73,7 @@ export const runClaudeCode = (
                 prompt,
                 attachments,
             )} --output-format text ${permissions}`;
+
         return stdout.trim();
     });
 
@@ -94,6 +91,7 @@ export const runGeminiCLI = (
                 prompt,
                 attachments,
             )} --output-format text ${permissions}`;
+
         return stdout.trim();
     });
 
@@ -119,15 +117,16 @@ export const runKimiCLI = (prompt: string, attachments: string[] = []) =>
             prompt,
             attachments,
         )} --final-message-only`;
+
         return stdout.trim();
     });
 
-export const runAI = async (
+export async function runAI(
     engine: AIEngine,
     prompt: string,
     attachments: string[] = [],
     allowChanges = false,
-) => {
+) {
     switch (engine) {
         case 'copilot':
             return runCopilot(prompt, attachments);
@@ -140,4 +139,4 @@ export const runAI = async (
         case 'kimi-cli':
             return runKimiCLI(prompt, attachments);
     }
-};
+}

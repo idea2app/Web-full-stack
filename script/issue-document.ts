@@ -1,6 +1,6 @@
 import { path } from 'zx';
 
-export const documentDirectory = (title: string, issueNumber: string) => {
+export function documentDirectory(title: string, issueNumber: string) {
     const slug = title
         .normalize('NFKC')
         .replace(/[^\p{L}\p{N} .()_-]+/gu, '-')
@@ -10,4 +10,4 @@ export const documentDirectory = (title: string, issueNumber: string) => {
         .replace(/[ ._-]+/g, '-')
         .slice(0, 100);
     return path.join('documents', `${slug || 'issue'}-${issueNumber}`);
-};
+}

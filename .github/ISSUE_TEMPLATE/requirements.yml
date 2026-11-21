@@ -13,15 +13,16 @@ body:
           placeholder: Describe the requirement and expected outcome.
       validations:
           required: true
-    - type: checkboxes
+    - type: dropdown
       id: scopes
       attributes:
           label: Development scopes
-          description: Select every scaffold directory affected by this requirement.
+          description: Select at least one scaffold directory affected by this requirement.
+          multiple: true
           options:
-              - label: server
-              - label: browser
-              - label: mobile
+              - server
+              - browser
+              - mobile
       validations:
           required: true
     - type: dropdown
