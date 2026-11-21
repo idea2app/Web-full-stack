@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os';
 import { $, argv, fs, path } from 'zx';
 import { parse, stringify } from 'yaml';
 import type { AIEngine } from './ai-cli.ts';
+import {
+    isValidStoredRequirementTask,
+    type StoredRequirementTask,
+} from './requirement-task.ts';
 
 $.verbose = true;
 
@@ -59,6 +63,8 @@ for (const { directory, number } of candidates) {
             `Invalid task plan for documentation issue #${number}.`,
         );
     }
+    const isValidStoredTask = (task: unknown, index: number) =>
+        isValidStoredRequirementTask(task, index, plan.scopes);
     if (
         !Array.isArray(plan.tasks) ||
         plan.tasks.length < 1 ||
@@ -67,32 +73,7 @@ for (const { directory, number } of candidates) {
         !Array.isArray(plan.scopes) ||
         !plan.scopes.length ||
         plan.scopes.some((scope: string) => !validScopes.has(scope)) ||
-        !plan.tasks.every(
-            (task: any, index: number) =>
-                task &&
-                typeof task.title === 'string' &&
-                !!task.title.trim() &&
-                task.title.length <= 200 &&
-                typeof task.body === 'string' &&
-                !!task.body.trim() &&
-                task.body.length <= 30_000 &&
-                Array.isArray(task.labels) &&
-                task.labels.length > 0 &&
-                task.labels.every(
-                    (label: string) =>
-                        validScopes.has(label) && plan.scopes.includes(label),
-                ) &&
-                (task.dependsOn === null ||
-                    (Number.isInteger(task.dependsOn) &&
-                        task.dependsOn >= 0 &&
-                        task.dependsOn < index)) &&
-                (task.issue === null ||
-                    (Number.isInteger(task.issue) && task.issue > 0)) &&
-                (task.delegated === undefined ||
-                    typeof task.delegated === 'boolean') &&
-                (task.delegated !== true ||
-                    (Number.isInteger(task.issue) && task.issue > 0)),
-        ) ||
+        !plan.tasks.every(isValidStoredTask) ||
         !['pending', 'processing', 'completed'].includes(plan.status)
     ) {
         throw new Error(
@@ -105,80 +86,85 @@ for (const { directory, number } of candidates) {
         `<!-- requirement-task:${number}:${index} -->`;
     let existingChildren: { number: number; body: string }[] | undefined;
 
-    for (const [index, task] of plan.tasks.entries()) {
-        if (!task.issue) {
-            if (!existingChildren) {
-                const { stdout: childIssues } =
-                    await $`gh issue view ${number} --json subIssues`;
-                existingChildren = await Promise.all(
-                    JSON.parse(childIssues).subIssues.map(
-                        async ({ number: childNumber }: { number: number }) => {
-                            const { stdout: child } =
-                                await $`gh issue view ${childNumber} --json body`;
-                            return {
-                                number: childNumber,
-                                body: JSON.parse(child).body,
-                            };
-                        },
-                    ),
-                );
-            }
-
-            const existing = existingChildren.find(({ body }) =>
-                body.includes(taskMarker(index)),
+    const ensureTaskIssue = async (
+        index: number,
+        task: StoredRequirementTask,
+    ) => {
+        if (task.issue) return;
+        if (!existingChildren) {
+            const { stdout: childIssues } =
+                await $`gh issue view ${number} --json subIssues`;
+            existingChildren = await Promise.all(
+                JSON.parse(childIssues).subIssues.map(
+                    async ({ number: childNumber }: { number: number }) => {
+                        const { stdout: child } =
+                            await $`gh issue view ${childNumber} --json body`;
+                        return {
+                            number: childNumber,
+                            body: JSON.parse(child).body,
+                        };
+                    },
+                ),
             );
-            if (existing) {
-                task.issue = existing.number;
-                await fs.outputFile(tasksPath, stringify(plan), 'utf8');
-                changed = true;
-            } else {
-                const directory = await mkdtemp(
-                    path.join(tmpdir(), 'task-issue-'),
-                );
-                try {
-                    const labels = [
-                        ...new Set([...task.labels, `agent-${plan.engine}`]),
-                    ];
-                    for (const label of labels) {
-                        await $`gh label create ${label} --color 1D76DB --description ${`${label} scaffold work`} --force`;
-                    }
-
-                    const bodyPath = path.join(directory, 'body.md');
-                    const dependsOn =
-                        task.dependsOn === null
-                            ? ''
-                            : `\n\nDepends on task #${
-                                  plan.tasks[task.dependsOn].issue
-                              }.`;
-                    await writeFile(
-                        bodyPath,
-                        `${taskMarker(index)}\n\n${task.body}${dependsOn}`,
-                        'utf8',
-                    );
-                    const { stdout: url } = await $`gh issue create --title ${
-                        task.title
-                    } --body-file ${bodyPath} --parent ${number} ${labels.flatMap(
-                        (label: string) => ['--label', label],
-                    )}`;
-                    const [, createdIssue] =
-                        url.trim().match(/\/issues\/(\d+)\s*$/) || [];
-                    if (!createdIssue)
-                        throw new Error(
-                            'Could not determine the created issue number.',
-                        );
-                    task.issue = Number(createdIssue);
-                    await fs.outputFile(tasksPath, stringify(plan), 'utf8');
-                    changed = true;
-                } catch (error) {
-                    console.error(
-                        `Could not create task ${index} for issue #${number}.`,
-                    );
-                    throw error;
-                } finally {
-                    await rm(directory, { recursive: true, force: true });
-                }
-            }
         }
+
+        const existing = existingChildren.find(({ body }) =>
+            body.includes(taskMarker(index)),
+        );
+        if (existing) {
+            task.issue = existing.number;
+            await fs.outputFile(tasksPath, stringify(plan), 'utf8');
+            changed = true;
+            return;
+        }
+
+        const directory = await mkdtemp(path.join(tmpdir(), 'task-issue-'));
+        try {
+            const labels = [
+                ...new Set([...task.labels, `agent-${plan.engine}`]),
+            ];
+            for (const label of labels) {
+                await $`gh label create ${label} --color 1D76DB --description ${`${label} scaffold work`} --force`;
+            }
+
+            const bodyPath = path.join(directory, 'body.md');
+            const dependsOn =
+                task.dependsOn === null
+                    ? ''
+                    : `\n\nDepends on task #${
+                          plan.tasks[task.dependsOn].issue
+                      }.`;
+            await writeFile(
+                bodyPath,
+                `${taskMarker(index)}\n\n${task.body}${dependsOn}`,
+                'utf8',
+            );
+            const { stdout: url } = await $`gh issue create --title ${
+                task.title
+            } --body-file ${bodyPath} --parent ${number} ${labels.flatMap(
+                (label: string) => ['--label', label],
+            )}`;
+            const [, createdIssue] =
+                url.trim().match(/\/issues\/(\d+)\s*$/) || [];
+            if (!createdIssue)
+                throw new Error(
+                    'Could not determine the created issue number.',
+                );
+            task.issue = Number(createdIssue);
+            await fs.outputFile(tasksPath, stringify(plan), 'utf8');
+            changed = true;
+        } catch (error) {
+            console.error(
+                `Could not create task ${index} for issue #${number}.`,
+            );
+            throw error;
+        } finally {
+            await rm(directory, { recursive: true, force: true });
+        }
+    };
+
+    for (const [index, task] of plan.tasks.entries()) {
+        await ensureTaskIssue(index, task as StoredRequirementTask);
 
         if (!task.delegated) {
             const engine = plan.engine as AIEngine;

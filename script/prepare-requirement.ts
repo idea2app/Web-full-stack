@@ -6,6 +6,7 @@ import { $, argv, fs, path } from 'zx';
 import { parse, stringify } from 'yaml';
 import { runAI, type AIEngine } from './ai-cli.ts';
 import { documentDirectory } from './issue-document.ts';
+import { isValidRequirementTask } from './requirement-task.ts';
 
 $.verbose = true;
 
@@ -141,29 +142,15 @@ const start = response.indexOf('{');
 if (start < 0)
     throw new Error('The selected AI agent did not return a JSON plan.');
 const plan = JSON.parse(response.slice(start));
+const isValidTask = (task: unknown, index: number) =>
+    isValidRequirementTask(task, index, scopes);
 if (
     !plan ||
     typeof plan !== 'object' ||
     !Array.isArray(plan.tasks) ||
     !plan.tasks.length ||
     plan.tasks.length > 10 ||
-    !plan.tasks.every(
-        (task: any, index: number) =>
-            task &&
-            typeof task.title === 'string' &&
-            !!task.title.trim() &&
-            task.title.length <= 200 &&
-            typeof task.body === 'string' &&
-            !!task.body.trim() &&
-            task.body.length <= 30_000 &&
-            Array.isArray(task.labels) &&
-            task.labels.length > 0 &&
-            task.labels.every((label: string) => scopes.includes(label)) &&
-            (task.dependsOn === null ||
-                (Number.isInteger(task.dependsOn) &&
-                    task.dependsOn >= 0 &&
-                    task.dependsOn < index)),
-    )
+    !plan.tasks.every(isValidTask)
 ) {
     throw new Error('The generated task list is invalid.');
 }
