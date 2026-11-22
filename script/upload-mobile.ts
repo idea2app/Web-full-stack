@@ -1,16 +1,26 @@
 #! /usr/bin/env node
 
-import { chmod, rm, writeFile } from 'node:fs/promises';
-import { $ } from 'zx';
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { $, fs, path } from 'zx';
 
 $.verbose = true;
 
-const keyPath = 'WMA-upload.key';
+const appID = process.env.WMA_ID;
+const uploadKey = process.env.WMA_UPLOAD_KEY;
+if (!appID || !uploadKey)
+    throw new Error('WMA_ID and WMA_UPLOAD_KEY are required.');
+
+delete process.env.WMA_UPLOAD_KEY;
+
+const version = (await fs.readJSON('mobile/package.json')).version as string;
+const keyDirectory = await mkdtemp(path.join(tmpdir(), 'wechat-upload-'));
+const keyPath = path.join(keyDirectory, 'WMA-upload.key');
+
 try {
-    await writeFile(keyPath, process.env.WMA_UPLOAD_KEY ?? '', { mode: 0o600 });
+    await writeFile(keyPath, uploadKey, { mode: 0o600 });
     await chmod(keyPath, 0o600);
-    await $`pnpm dlx miniprogram-ci upload --pp ./mobile/ --pkp ${keyPath} --appid ${process
-        .env.WMA_ID!} --uv ${process.env.PACKAGE_VERSION!}`;
+    await $`pnpm dlx miniprogram-ci@2.1.31 upload --pp ./mobile/ --pkp ${keyPath} --appid ${appID} --uv ${version}`;
 } finally {
-    await rm(keyPath, { force: true });
+    await rm(keyDirectory, { recursive: true, force: true });
 }

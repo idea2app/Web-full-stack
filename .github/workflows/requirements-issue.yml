@@ -82,6 +82,7 @@ jobs:
                   add-paths: |
                       .gitmodules
                       documents/
+                      pnpm-lock.yaml
                       server/
                       browser/
                       mobile/

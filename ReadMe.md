@@ -35,7 +35,7 @@ flowchart LR
 
 1. A `documentation` issue selects one or more scopes and an AI agent.
 2. One workflow job converts attachments to Markdown, stores `documents/{issue-title}-{issue-number}/content.md`, analyzes the requirement, and stores ordered tasks in the adjacent `tasks.yml`.
-3. The same job localizes selected scaffold submodules and opens one review PR containing the documents and code changes.
+3. The same job localizes selected scaffold submodules, removes their nested pnpm lockfiles, runs `pnpm -r i` from the repository root, and opens one review PR containing the documents and code changes.
 4. Closing the documentation issue creates each task as a child issue, labels it with the selected scope and agent, and records the child number in `tasks.yml`.
 5. A non-documentation issue with no open non-documentation parent is delegated to Copilot or the selected coding CLI. Closing an issue starts its eligible open children.
 6. Non-Copilot implementations are proposed in pull requests whose descriptions close the corresponding issues.
@@ -66,7 +66,7 @@ pnpm test
 
 The test suite uses the [Node.js test runner][1], [Jest expect][2], [Jest mock][3], and [Playwright][4]. Chromium is installed by the test lifecycle. Browser tests expect the browser scaffold to be running at `http://localhost:3000`.
 
-Deployment workflows build and deploy their matching scaffold folder; the weekly submodule workflow proposes upstream starter updates for review.
+Root-level deployment workflows watch the corresponding scaffold directories and run TypeScript scripts from `script/`. The server and browser container deploys use Docker Buildx and OpenSSH, browser previews use the Vercel CLI, and mobile builds can upload to WeChat.
 
 ## 📚 Further reading
 

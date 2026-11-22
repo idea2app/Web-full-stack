@@ -9,6 +9,7 @@ const scopes = String(argv.scopes ?? '')
     .split(/\s+/)
     .filter(Boolean);
 const allowedScopes = new Set(['server', 'browser', 'mobile']);
+let localized = false;
 
 for (const scope of new Set(scopes)) {
     if (!allowedScopes.has(scope)) throw new Error('Invalid scaffold scope.');
@@ -20,5 +21,9 @@ for (const scope of new Set(scopes)) {
     await $`git rm --cached -- ${scope}`;
     await $`git config -f .gitmodules --remove-section ${`submodule.${scope}`}`;
     await rm(`${scope}/.git`, { force: true });
+    await rm(`${scope}/pnpm-lock.yaml`, { force: true });
     await $`git add -f -- .gitmodules ${scope}`;
+    localized = true;
 }
+
+if (localized) await $`pnpm -r i`;
