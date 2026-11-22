@@ -43,11 +43,11 @@ services:
             - 3000:3000
         networks:
             - idea2app
-    integration-test:
+    web-full-stack:
         depends_on:
             - next-bootstrap-ts
         build: ./
-        image: integration-test
+        image: web-full-stack
         networks:
             - idea2app
         command: npm test

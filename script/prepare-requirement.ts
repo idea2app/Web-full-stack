@@ -45,7 +45,7 @@ if (!scopes.length || scopes.some(scope => !allowedScopes.has(scope)))
 
 if (!engine) throw new Error('Select a supported AI agent.');
 
-const allowedAttachment = (rawUrl: string) => {
+function allowedAttachment(rawUrl: string) {
     const url = URL.parse(rawUrl);
 
     return (
@@ -56,7 +56,7 @@ const allowedAttachment = (rawUrl: string) => {
             (url.hostname.endsWith('.githubusercontent.com') &&
                 url.hostname !== 'raw.githubusercontent.com'))
     );
-};
+}
 const urls = (issueBody.match(/https:\/\/[^\s<>)]+/g) ?? [])
     .map((url: string) => url.replace(/[.,!?;:]+$/, ''))
     .uniqueBy()

@@ -4,25 +4,5 @@ packages:
     - browser
     - mobile
 autoInstallPeers: false
-minimumReleaseAge: 0
-catalog:
-    '@types/react': ^19.3.0
-overrides:
-    '@types/react': 'catalog:'
-    idb-keyval: 'npm:taro-idb-keyval'
-    koa: '^3.2'
-    reflect-metadata: ^0.2.2
-    rolldown: 1.2.15
-patchedDependencies:
-    next@16.4.6: browser/patches/next@16.4.6.patch
-publicHoistPattern:
-    - '*import-in-the-middle*'
-    - '*require-in-the-middle*'
 allowBuilds:
-    '@parcel/watcher': true
-    '@sentry/cli': true
     '@swc/core': true
-    better-sqlite3: true
-    core-js: true
-    esbuild: true
-    sharp: true

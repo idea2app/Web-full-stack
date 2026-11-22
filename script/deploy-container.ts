@@ -40,53 +40,58 @@ const homeDirectory =
 const composeProject =
     scope === 'server' ? 'web-full-stack' : 'web-full-stack-browser';
 
-try {
+async function deploy() {
     await $`docker buildx build --platform linux/amd64 --tag ${configuration.image}:latest --output ${`type=docker,dest=${artifactPath}`} --file ${path.join(
         scope,
         'Dockerfile',
     )} ${scope}`;
 
     let compose = await fs.readFile(composeSource, 'utf8');
+
     if (scope === 'browser') {
         const service = '  next-bootstrap-ts:\n';
+
         if (!compose.includes(service))
             throw new Error('Could not locate the browser Compose service.');
+
         compose = compose.replace(
             service,
             `${service}    env_file:\n      - .env.local\n`,
         );
     }
-
     await writeFile(composePath, compose);
     await writeFile(runtimePath, configuration.runtime, { mode: 0o600 });
 
-    if (!HOST) {
-        console.log('HOST is not configured; skipping remote deployment.');
-    } else {
-        if (!USER || !SSH_KEY)
-            throw new Error(
-                'USER and SSH_KEY are required for remote deployment.',
-            );
+    if (!HOST)
+        return console.log(
+            'HOST is not configured; skipping remote deployment.',
+        );
+    if (!USER || !SSH_KEY)
+        throw new Error('USER and SSH_KEY are required for remote deployment.');
 
-        const keyPath = path.join(directory, 'deploy-key');
-        await writeFile(keyPath, SSH_KEY, { mode: 0o600 });
-        await chmod(keyPath, 0o600);
+    const keyPath = path.join(directory, 'deploy-key');
 
-        const sshOptions = [
-            '-i',
-            keyPath,
-            '-o',
-            'BatchMode=yes',
-            '-o',
-            'StrictHostKeyChecking=accept-new',
-        ];
-        const remote = `${USER}@${HOST}`;
-        const targetDirectory = `~/${homeDirectory}`;
+    await writeFile(keyPath, SSH_KEY, { mode: 0o600 });
+    await chmod(keyPath, 0o600);
 
-        await $`ssh ${sshOptions} ${remote} ${`mkdir -p ${remoteDirectory}`}`;
-        await $`scp ${sshOptions} ${artifactPath} ${composePath} ${runtimePath} ${`${remote}:${remoteDirectory}/`}`;
-        await $`ssh ${sshOptions} ${remote} ${`set -e; mkdir -p ${targetDirectory}; mv ${remoteDirectory}/docker-compose.yml ${targetDirectory}/docker-compose.yml; mv ${remoteDirectory}/${configuration.runtimeFile} ${targetDirectory}/${configuration.runtimeFile}; docker load --input ${remoteDirectory}/artifact.tar; rm -rf ${remoteDirectory}; cd ${targetDirectory}; docker compose -p ${composeProject} up --detach --remove-orphans`}`;
-    }
+    const sshOptions = [
+        '-i',
+        keyPath,
+        '-o',
+        'BatchMode=yes',
+        '-o',
+        'StrictHostKeyChecking=accept-new',
+    ];
+    const remote = `${USER}@${HOST}`;
+    const targetDirectory = `~/${homeDirectory}`;
+
+    await $`ssh ${sshOptions} ${remote} ${`mkdir -p ${remoteDirectory}`}`;
+    await $`scp ${sshOptions} ${artifactPath} ${composePath} ${runtimePath} ${`${remote}:${remoteDirectory}/`}`;
+    await $`ssh ${sshOptions} ${remote} ${`set -e; mkdir -p ${targetDirectory}; mv ${remoteDirectory}/docker-compose.yml ${targetDirectory}/docker-compose.yml; mv ${remoteDirectory}/${configuration.runtimeFile} ${targetDirectory}/${configuration.runtimeFile}; docker load --input ${remoteDirectory}/artifact.tar; rm -rf ${remoteDirectory}; cd ${targetDirectory}; docker compose -p ${composeProject} up --detach --remove-orphans`}`;
+}
+
+try {
+    await deploy();
 } finally {
     await rm(directory, { recursive: true, force: true });
 }

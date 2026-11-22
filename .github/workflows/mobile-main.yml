@@ -8,7 +8,6 @@ on:
         paths:
             - 'mobile'
             - 'mobile/**'
-            - 'script/deploy-mobile.ts'
             - 'package.json'
             - 'pnpm-lock.yaml'
             - 'pnpm-workspace.yaml'
@@ -35,22 +34,42 @@ jobs:
               with:
                   version: 12.21.0
 
-            - name: Install root automation dependencies
-              run: pnpm install --filter integration-test --no-frozen-lockfile --ignore-scripts
-
-            - name: Build mobile application
-              id: build
+            - name: Install dependencies
               if: ${{ env.WMA_ID }}
-              run: pnpm exec zx script/deploy-mobile.ts
+              run: |
+                  if [ -f mobile/pnpm-lock.yaml ]; then
+                      pnpm --dir mobile --pm-on-fail=ignore --shared-workspace-lockfile=false install --frozen-lockfile
+                  else
+                      pnpm install --frozen-lockfile
+                  fi
+
+            - name: Build WeChat version
+              if: ${{ env.WMA_ID }}
+              run: pnpm --dir mobile --pm-on-fail=ignore build-wx
+              env:
+                  NODE_ENV: production
+
+            - name: Get package version
+              id: package-version
+              if: ${{ env.WMA_ID }}
+              run: echo "version=$(node -p "require('./mobile/package.json').version")" >> "$GITHUB_OUTPUT"
 
             - uses: actions/upload-artifact@v7.0.2
               if: ${{ env.WMA_ID }}
               with:
-                  name: Taro-miniapp-${{ steps.build.outputs.package-version }}-bundle
+                  name: Taro-miniapp-${{ steps.package-version.outputs.version }}-bundle
                   path: ./mobile/dist/wx/
+                  if-no-files-found: error
 
             - name: Upload to WeChat
               if: ${{ env.WMA_ID }}
-              run: pnpm exec zx script/upload-mobile.ts
+              run: |
+                  : "${WMA_UPLOAD_KEY:?WMA_UPLOAD_KEY is required}"
+                  key_path="$RUNNER_TEMP/wechat-upload.key"
+                  trap 'rm -f "$key_path"' EXIT
+                  umask 077
+                  printf '%s' "$WMA_UPLOAD_KEY" > "$key_path"
+                  pnpm dlx miniprogram-ci@2.1.31 upload --pp ./mobile/ --pkp "$key_path" --appid "$WMA_ID" --uv "$PACKAGE_VERSION"
               env:
                   WMA_UPLOAD_KEY: ${{ secrets.WMA_UPLOAD_KEY }}
+                  PACKAGE_VERSION: ${{ steps.package-version.outputs.version }}

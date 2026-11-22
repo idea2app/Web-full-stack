@@ -8,38 +8,81 @@ on:
         paths:
             - 'server'
             - 'server/**'
-            - 'script/deploy-container.ts'
-            - 'package.json'
-            - 'pnpm-lock.yaml'
-            - 'pnpm-workspace.yaml'
             - '.github/workflows/server-deploy-production.yml'
 
 permissions:
     contents: read
 
+concurrency:
+    group: server-container-deploy
+    cancel-in-progress: false
+
 jobs:
     deploy:
         runs-on: ubuntu-latest
+        env:
+            HOST: ${{ secrets.HOST }}
         steps:
             - uses: actions/checkout@v7.0.1
               with:
                   submodules: recursive
 
-            - uses: actions/setup-node@v7.1.0
+            - uses: docker/setup-qemu-action@v4.4.0
+            - uses: docker/setup-buildx-action@v4.4.1
+
+            - name: Create artifact directory
+              run: mkdir -p build/server
+
+            - name: Build image
+              uses: docker/build-push-action@v7.4.0
               with:
-                  node-version: 26
+                  context: ./server
+                  platforms: linux/amd64
+                  tags: idea2app/rest-node-ts:latest
+                  outputs: type=docker,dest=build/server/artifact.tar
+                  cache-from: type=gha,scope=server
+                  cache-to: type=gha,mode=max,scope=server
 
-            - uses: pnpm/action-setup@v6.1.1
-              with:
-                  version: 12.21.0
-
-            - name: Install root automation dependencies
-              run: pnpm install --filter integration-test --no-frozen-lockfile --ignore-scripts
-
-            - name: Build and deploy server container
-              run: pnpm exec zx script/deploy-container.ts --scope server
+            - name: Prepare deployment files
+              if: ${{ env.HOST }}
+              run: |
+                  install -m 600 /dev/null build/server/.env
+                  cat > build/server/.env <<EOF
+                  APP_SECRET=$APP_SECRET
+                  EOF
+                  cp server/docker-compose.yml server/Caddyfile build/server/
               env:
                   APP_SECRET: ${{ secrets.APP_SECRET }}
-                  HOST: ${{ secrets.HOST }}
-                  SSH_KEY: ${{ secrets.SSH_KEY }}
-                  USER: ${{ secrets.USER }}
+
+            - name: Transport image and configuration
+              if: ${{ env.HOST }}
+              uses: appleboy/scp-action@v1
+              with:
+                  source: build/server/artifact.tar,build/server/docker-compose.yml,build/server/Caddyfile,build/server/.env
+                  target: /tmp/web-full-stack-server
+                  host: ${{ secrets.HOST }}
+                  username: ${{ secrets.USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
+                  strip_components: 2
+                  overwrite: true
+
+            - name: Run image
+              if: ${{ env.HOST }}
+              uses: appleboy/ssh-action@v1
+              with:
+                  host: ${{ secrets.HOST }}
+                  username: ${{ secrets.USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
+                  script: |
+                      set -e
+                      mkdir -p ~/Web-full-stack
+                      cd /tmp/web-full-stack-server
+                      mv docker-compose.yml Caddyfile .env ~/Web-full-stack/
+                      docker load --input artifact.tar
+                      rm -f artifact.tar
+                      cd ~/Web-full-stack
+                      docker compose -p web-full-stack up --detach --remove-orphans
+                      docker container prune --force
+                      docker image prune --all --force

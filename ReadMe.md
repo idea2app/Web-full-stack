@@ -57,7 +57,7 @@ Copilot uses the workflow token unless `COPILOT_GITHUB_TOKEN` is configured.
 
 ## 🧪 Development and tests
 
-Use Node.js 26 and pnpm 12:
+Use Node.js 22+ and PNPM 11+:
 
 ```shell
 pnpm install
@@ -66,11 +66,15 @@ pnpm test
 
 The test suite uses the [Node.js test runner][1], [Jest expect][2], [Jest mock][3], and [Playwright][4]. Chromium is installed by the test lifecycle. Browser tests expect the browser scaffold to be running at `http://localhost:3000`.
 
-Root-level deployment workflows watch the corresponding scaffold directories and run TypeScript scripts from `script/`. The server and browser container deploys use Docker Buildx and OpenSSH, browser previews use the Vercel CLI, and mobile builds can upload to WeChat.
+Root-level deployment workflows watch the corresponding scaffold directories. The server and browser container deploys use Docker Buildx and SCP/SSH actions, browser previews use the Vercel action, and mobile builds can upload to WeChat.
+
+For container deployment, configure `HOST`, `USER`, and `SSH_KEY`. Set `SSH_HOST_FINGERPRINT` to verify the server's SSH host key; without it, the SSH actions do not verify the host key. Server runtime configuration uses `APP_SECRET`; browser runtime configuration uses `ENV_FILE`. Without `HOST`, the workflows build images but skip remote deployment.
+
+After deployment, all stopped containers and unused images on the host are pruned, including those from other projects.
 
 ## 📚 Further reading
 
-[Project guide][5]
+1. [Project guide][5]
 
 [1]: https://nodejs.org/api/test.html
 [2]: https://jestjs.io/docs/expect
