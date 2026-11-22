@@ -1,0 +1,43 @@
+name: Requirements
+description: Submit a product or technical requirement
+title: '[Requirement] '
+labels:
+    - documentation
+body:
+    - type: textarea
+      id: requirement
+      attributes:
+          label: Requirement details
+          description: Describe the requirement and acceptance criteria in Markdown. Attach relevant files or images.
+          render: markdown
+          placeholder: Describe the requirement and expected outcome.
+      validations:
+          required: true
+    - type: dropdown
+      id: scopes
+      attributes:
+          label: Development scopes
+          description: Select at least one scaffold directory affected by this requirement.
+          multiple: true
+          options:
+              - server
+              - browser
+              - mobile
+      validations:
+          required: true
+    - type: dropdown
+      id: engine
+      attributes:
+          label: AI agent
+          description: Select the coding agent for the generated task issues.
+          default: 0
+          options:
+              - Copilot
+              - OpenAI Codex
+              - Gemini CLI
+              - Claude Code
+              - Qoder CLI
+              - Kimi CLI
+              - Kilo CLI
+      validations:
+          required: true

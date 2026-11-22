@@ -1,7 +1,14 @@
 {
     "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
         "esModuleInterop": true,
-        "types": ["@types/jest", "jest-playwright-preset"]
+        "rewriteRelativeImportExtensions": true,
+        "allowImportingTsExtensions": true,
+        "strict": true,
+        "types": ["node"],
+        "skipLibCheck": true
     },
-    "include": ["**/*"]
+    "include": ["script/**/*.ts", "test/**/*.ts"]
 }

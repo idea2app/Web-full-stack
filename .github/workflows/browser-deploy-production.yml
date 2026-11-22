@@ -1,0 +1,92 @@
+name: Deploy browser container
+
+on:
+    workflow_dispatch:
+    push:
+        branches:
+            - main
+        paths:
+            - 'browser'
+            - 'browser/**'
+            - '.github/workflows/browser-deploy-production.yml'
+
+permissions:
+    contents: read
+
+concurrency:
+    group: browser-container-deploy
+    cancel-in-progress: false
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        env:
+            HOST: ${{ secrets.HOST }}
+        steps:
+            - uses: actions/checkout@v7.0.1
+              with:
+                  submodules: recursive
+
+            - uses: docker/setup-qemu-action@v4.4.0
+            - uses: docker/setup-buildx-action@v4.4.1
+
+            - name: Create artifact directory
+              run: mkdir -p build/browser
+
+            - name: Build image
+              uses: docker/build-push-action@v7.4.0
+              with:
+                  context: ./browser
+                  platforms: linux/amd64
+                  tags: idea2app/next-bootstrap-ts:latest
+                  outputs: type=docker,dest=build/browser/artifact.tar
+                  cache-from: type=gha,scope=browser
+                  cache-to: type=gha,mode=max,scope=browser
+
+            - name: Prepare deployment files
+              if: ${{ env.HOST }}
+              run: |
+                  install -m 600 /dev/null build/browser/.env.local
+                  printf '%s' "$ENV_FILE" > build/browser/.env.local
+                  cp browser/docker-compose.yml build/browser/
+                  cat > build/browser/compose.override.yml <<'EOF'
+                  services:
+                    next-bootstrap-ts:
+                      env_file:
+                        - .env.local
+                  EOF
+              env:
+                  ENV_FILE: ${{ secrets.ENV_FILE }}
+
+            - name: Transport image and configuration
+              if: ${{ env.HOST }}
+              uses: appleboy/scp-action@v1
+              with:
+                  source: build/browser/artifact.tar,build/browser/docker-compose.yml,build/browser/compose.override.yml,build/browser/.env.local
+                  target: /tmp/web-full-stack-browser
+                  host: ${{ secrets.HOST }}
+                  username: ${{ secrets.USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
+                  strip_components: 2
+                  overwrite: true
+
+            - name: Run image
+              if: ${{ env.HOST }}
+              uses: appleboy/ssh-action@v1
+              with:
+                  host: ${{ secrets.HOST }}
+                  username: ${{ secrets.USER }}
+                  key: ${{ secrets.SSH_KEY }}
+                  fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
+                  script: |
+                      set -e
+                      mkdir -p ~/Web-full-stack-browser
+                      cd /tmp/web-full-stack-browser
+                      mv docker-compose.yml compose.override.yml .env.local ~/Web-full-stack-browser/
+                      docker load --input artifact.tar
+                      rm -f artifact.tar
+                      cd ~/Web-full-stack-browser
+                      docker compose -p web-full-stack-browser -f docker-compose.yml -f compose.override.yml up --detach --remove-orphans
+                      docker container prune --force
+                      docker image prune --all --force

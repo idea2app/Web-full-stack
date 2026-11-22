@@ -1,24 +1,29 @@
 {
-    "name": "integration-test",
+    "name": "@idea2app/web-full-stack",
     "version": "0.2.0",
     "author": "shiy2008@gmail.com",
     "private": true,
+    "type": "module",
+    "engines": {
+        "node": ">=22",
+        "pnpm": ">=11"
+    },
     "dependencies": {
-        "cross-env": "^7.0.3",
-        "expect-playwright": "^0.8.0",
-        "jest": "^29.3.1",
-        "jest-playwright-preset": "^2.0.0",
-        "playwright": "^1.29.0",
-        "ts-jest": "^29.0.3",
-        "ts-node": "^10.9.1",
-        "typescript": "~4.9.4"
+        "array-unique-proposal": "^0.3.4",
+        "yaml": "^2.9.1",
+        "zx": "^8.8.5"
     },
     "devDependencies": {
-        "@jest/types": "^29.3.1",
-        "@types/jest": "^29.2.4",
-        "husky": "^8.0.2",
-        "lint-staged": "^13.1.0",
-        "prettier": "^2.8.1"
+        "@swc-node/register": "^1.12.1",
+        "@swc/core": "^1.16.22",
+        "@types/node": "^26.6.6",
+        "expect": "^30.5.2",
+        "husky": "^9.1.7",
+        "jest-mock": "^30.5.2",
+        "lint-staged": "^17.6.1",
+        "playwright": "^1.65.1",
+        "prettier": "^3.10.1",
+        "typescript": "~6.0.3"
     },
     "prettier": {
         "singleQuote": true,
@@ -30,10 +35,11 @@
         "*.{md,json,yml,ts}": "prettier --write"
     },
     "scripts": {
-        "prepare": "husky install  &&  npx playwright install",
+        "prepare": "husky",
+        "pretest": "playwright install chromium",
         "lint": "lint-staged",
-        "test-server": "jest test/server/",
-        "test-browser": "cross-env WEB_BROWSER=true  jest test/browser/",
-        "test": "npm run lint  &&  npm run test-server  &&  npm run test-browser"
+        "test-server": "node --import @swc-node/register/esm-register --test test/server/*.spec.ts",
+        "test-browser": "node --import @swc-node/register/esm-register --test test/browser/*.spec.ts",
+        "test": "pnpm lint && pnpm test-server && pnpm test-browser"
     }
 }
