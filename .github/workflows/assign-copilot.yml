@@ -4,6 +4,7 @@ on:
     issues:
         types:
             - opened
+            - reopened
             - closed
 
 permissions:
@@ -15,10 +16,12 @@ jobs:
     assign:
         if: >-
             ${{
-              (github.event.action == 'opened' && !contains(github.event.issue.labels.*.name, 'documentation')) ||
-              github.event.action == 'closed'
+              ((github.event.action == 'opened' || github.event.action == 'reopened') && !contains(github.event.issue.labels.*.name, 'documentation')) ||
+              (github.event.action == 'closed' && github.event.issue.state_reason == 'completed')
             }}
         runs-on: ubuntu-latest
+        env:
+            PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS: 'true'
         steps:
             - uses: actions/checkout@v7.0.1
 
@@ -30,8 +33,7 @@ jobs:
               with:
                   version: 12.21.0
 
-            - name: Install dependencies
-              run: pnpm install --frozen-lockfile
+            - run: pnpm install --no-frozen-lockfile
 
             - name: Assign issue to Copilot
               run: >-

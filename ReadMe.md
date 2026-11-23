@@ -22,25 +22,25 @@ flowchart LR
     Markdown --> Split[🧩 Generate tasks.yml]
     Split --> Vendor[📦 Localize selected scaffolds]
     Vendor --> Review[🔍 One review PR]
-    Review --> Closed{Requirement closed?}
+    Review --> Closed{Requirement completed?}
     Closed -->|Yes| Children[🎫 Create child issues]
     Children --> Agent{Selected agent}
     Agent -->|Copilot| Assign[🤖 Assign Copilot]
     Agent -->|Other CLI| Implement[🛠️ Implement and open a closing PR]
-    Parent[📌 Parent issue closed] --> ChildrenIssue[🎫 Start eligible child issues]
+    Parent[📌 Parent issue completed] --> ChildrenIssue[🎫 Start eligible child issues]
     ChildrenIssue --> Agent
 ```
 
 ### Requirement and issue lifecycle
 
-1. A `documentation` issue selects one or more scopes and an AI agent.
+1. A new or reopened `documentation` issue selects one or more scopes and an AI agent.
 2. One workflow job converts attachments to Markdown, stores `documents/{issue-title}-{issue-number}/content.md`, analyzes the requirement, and stores ordered tasks in the adjacent `tasks.yml`.
-3. The same job localizes selected scaffold submodules, removes their nested pnpm lockfiles, runs `pnpm -r i` from the repository root, and opens one review PR containing the documents and code changes.
-4. Closing the documentation issue creates each task as a child issue, labels it with the selected scope and agent, and records the child number in `tasks.yml`.
-5. A non-documentation issue with no open non-documentation parent is delegated to Copilot or the selected coding CLI. Closing an issue starts its eligible open children.
+3. The same job initializes and localizes selected scaffold submodules, removes their nested pnpm lockfiles, runs `pnpm -r i --no-frozen-lockfile` from the repository root, and opens one review PR containing the documents and code changes. Workspace installs allow the root lockfile to change because unlocalized submodules may be absent.
+4. Closing the documentation issue as completed creates each task as a child issue, labels it with the selected scope and agent, and records the child number in `tasks.yml`.
+5. A new or reopened non-documentation issue is delegated to Copilot or the selected coding CLI when its non-documentation parent is completed, or when it has no parent. An open documentation parent does not block delegation, but any parent closed without completion does. Completing an issue starts its eligible open children.
 6. Non-Copilot implementations are proposed in pull requests whose descriptions close the corresponding issues.
 
-The issue-creation workflow listens both for closed issues and for changes to `documents/**/tasks.yml`. That covers either order of events: a requirement may close before its review PR is merged, or after the task file reaches the default branch.
+The issue-creation workflow listens both for issues closed as completed and for changes to `documents/**/tasks.yml`. It checks that each requirement is completed in either case, so requirements closed as not planned or duplicate are skipped, regardless of whether the review PR merges before or after closure.
 
 Configure the provider secret for each non-Copilot agent used by the issue form:
 
@@ -53,7 +53,7 @@ Configure the provider secret for each non-Copilot agent used by the issue form:
 | Kilo CLI     | `KILO_CONFIG_CONTENT`         | JSON config with model and provider credentials; see [Kilo CLI docs][6] |
 | Qoder CLI    | `QODER_PERSONAL_ACCESS_TOKEN` |                                                                         |
 
-Copilot uses the workflow token unless `COPILOT_GITHUB_TOKEN` is configured.
+Copilot uses the workflow token unless `COPILOT_GITHUB_TOKEN` is configured. For an organization-owned repository, the organization must enable **Allow use of Copilot CLI billed to the organization**. A configured `COPILOT_GITHUB_TOKEN` must be a fine-grained personal access token with the **Copilot Requests** account permission.
 
 ## 🧪 Development and tests
 
@@ -63,6 +63,10 @@ Use Node.js 22+ and PNPM 11+:
 pnpm install
 pnpm test
 ```
+
+GitHub Actions jobs that run pnpm allow dependency install scripts automatically, including scripts added by future transitive dependencies. Local installations continue to use the `allowBuilds` approvals in `pnpm-workspace.yaml`.
+
+Automated pull request commits skip Git hooks; local Git hooks remain enabled.
 
 The test suite uses the [Node.js test runner][1], [Jest expect][2], [Jest mock][3], and [Playwright][4]. Chromium is installed by the test lifecycle. Browser tests expect the browser scaffold to be running at `http://localhost:3000`.
 

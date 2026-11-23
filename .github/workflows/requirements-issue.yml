@@ -4,9 +4,11 @@ on:
     issues:
         types:
             - opened
+            - reopened
 
 permissions:
     contents: write
+    copilot-requests: write
     issues: write
     pull-requests: write
 
@@ -18,10 +20,10 @@ jobs:
     prepare:
         if: ${{ contains(github.event.issue.labels.*.name, 'documentation') }}
         runs-on: ubuntu-latest
+        env:
+            PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS: 'true'
         steps:
             - uses: actions/checkout@v7.0.1
-              with:
-                  submodules: recursive
 
             - uses: actions/setup-node@v7.1.0
               with:
@@ -32,7 +34,7 @@ jobs:
                   version: 12.21.0
 
             - name: Install dependencies
-              run: pnpm install --frozen-lockfile
+              run: pnpm install --no-frozen-lockfile
 
             - uses: stefanbuck/github-issue-parser@v3.2.5
               id: parse
@@ -78,6 +80,10 @@ jobs:
                   SCOPES: ${{ steps.prepare.outputs.scopes }}
 
             - uses: peter-evans/create-pull-request@v8.1.3
+              env:
+                  GIT_CONFIG_COUNT: '1'
+                  GIT_CONFIG_KEY_0: core.hooksPath
+                  GIT_CONFIG_VALUE_0: /dev/null
               with:
                   add-paths: |
                       .gitmodules

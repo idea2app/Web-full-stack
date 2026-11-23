@@ -1,7 +1,7 @@
 #! /usr/bin/env node
 
 import { argv, fs } from 'zx';
-import { runAI, type AIEngine } from './ai-cli.ts';
+import { runAI, type AIEngine } from './utility.ts';
 
 const issueNumber = String(argv['issue-number'] ?? '');
 const issue = await fs.readJSON(String(argv['issue-file'] ?? ''));
