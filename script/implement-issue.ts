@@ -33,4 +33,4 @@ Issue title: ${issueTitle}
 ${issueBody}
 </untrusted-issue>`;
 
-await runAI(engine, prompt, [], true);
+await Array.fromAsync(runAI(engine, prompt, [], true));

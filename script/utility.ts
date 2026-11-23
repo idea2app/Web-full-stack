@@ -1,5 +1,11 @@
-import { $, fs, path } from 'zx';
+import { $, fs, path, type ProcessPromise } from 'zx';
 import { stringify } from 'yaml';
+
+export const isPositiveInteger = (value: unknown): value is number =>
+    Number.isInteger(value) && (value as number) > 0;
+
+export const isObject = (value: unknown): value is Record<string, unknown> =>
+    !!value && typeof value === 'object' && !Array.isArray(value);
 
 export function documentDirectory(title: string, issueNumber: string) {
     const slug = title
@@ -66,14 +72,50 @@ export interface RequirementTask {
 
 export interface StoredRequirementTask extends RequirementTask {
     issue: number | null;
+    url?: string | null;
     delegated?: boolean;
 }
 
-export const isObject = (value: unknown): value is Record<string, unknown> =>
-    !!value && typeof value === 'object' && !Array.isArray(value);
+export interface RequirementPlan {
+    issue: number;
+    url?: string;
+    title?: string;
+    engine: AIEngine;
+    scopes: string[];
+    status: 'processing' | 'incomplete' | 'pending' | 'completed';
+    tasks: StoredRequirementTask[];
+}
 
-export const isPositiveInteger = (value: unknown): value is number =>
-    Number.isInteger(value) && (value as number) > 0;
+export interface RequirementInput {
+    issueNumber: string;
+    issueUrl: string;
+    issueTitle: string;
+    issueBody: string;
+}
+
+export const isValidRequirementInput = ({
+    issueNumber,
+    issueUrl,
+    issueTitle,
+    issueBody,
+}: RequirementInput) =>
+    !!issueNumber &&
+    URL.parse(issueUrl)?.protocol === 'https:' &&
+    !!issueTitle &&
+    !!issueBody;
+
+export function isAllowedAttachment(rawUrl: string): boolean {
+    const url = URL.parse(rawUrl);
+
+    return (
+        !!url &&
+        url.protocol === 'https:' &&
+        ((url.hostname === 'github.com' &&
+            url.pathname.startsWith('/user-attachments/')) ||
+            (url.hostname.endsWith('.githubusercontent.com') &&
+                url.hostname !== 'raw.githubusercontent.com'))
+    );
+}
 
 export const isValidRequirementTask = (
     task: unknown,
@@ -105,8 +147,39 @@ export const isValidStoredRequirementTask = (
     isObject(task) &&
     isValidRequirementTask(task, index, scopes) &&
     (task.issue === null || isPositiveInteger(task.issue)) &&
+    (task.url === undefined ||
+        task.url === null ||
+        (typeof task.url === 'string' && URL.canParse(task.url))) &&
     (task.delegated === undefined || typeof task.delegated === 'boolean') &&
     (task.delegated !== true || isPositiveInteger(task.issue));
+
+export type RequirementOutputRecord =
+    | { type: 'task'; task: RequirementTask }
+    | { type: 'complete'; taskCount: number };
+
+export function parseRequirementOutputLine(
+    line: string,
+    index: number,
+    scopes: readonly string[],
+): RequirementOutputRecord {
+    const record: unknown = JSON.parse(line);
+
+    if (!isObject(record))
+        throw new Error('Task output must be a JSON object.');
+    if (
+        record.type === 'complete' &&
+        Number.isInteger(record.taskCount) &&
+        (record.taskCount as number) >= 0
+    )
+        return { type: 'complete', taskCount: record.taskCount as number };
+
+    const { type, ...task } = record;
+
+    if (type !== 'task' || !isValidRequirementTask(task, index, scopes))
+        throw new Error('The generated task record is invalid.');
+
+    return { type, task };
+}
 
 export type AIEngine =
     | 'copilot'
@@ -127,10 +200,10 @@ const credentials: Record<AIEngine, string[]> = {
     'kilo-cli': ['KILO_CONFIG_CONTENT'],
 };
 
-async function runWithCredentials(
+async function* runWithCredentials(
     engine: AIEngine,
-    action: () => Promise<string>,
-) {
+    action: () => ProcessPromise,
+): AsyncGenerator<string> {
     const savedCredentials = new Map(
         Object.values(credentials)
             .flat()
@@ -143,7 +216,7 @@ async function runWithCredentials(
     }
 
     try {
-        return await action();
+        yield* action();
     } finally {
         for (const [name, value] of savedCredentials)
             if (value === undefined) delete process.env[name];
@@ -158,15 +231,13 @@ const promptWithFiles = (prompt: string, attachments: string[]) =>
     ].join('\n\n');
 
 export const runCopilot = (prompt: string, attachments: string[] = []) =>
-    runWithCredentials('copilot', async () => {
+    runWithCredentials('copilot', () => {
         const args = attachments.flatMap(path => ['--attachment', path]);
-        const { stdout } =
-            await $`pnpm dlx --package=@github/copilot@1.0.114 copilot --no-auto-update --no-custom-instructions --no-ask-user --disable-builtin-mcps --available-tools read --allow-tool read --silent -p ${promptWithFiles(
-                prompt,
-                attachments,
-            )} ${args}`;
 
-        return stdout.trim();
+        return $`pnpm dlx --package=@github/copilot@1.0.114 copilot --no-auto-update --no-custom-instructions --no-ask-user --disable-builtin-mcps --available-tools read --allow-tool read --silent -p ${promptWithFiles(
+            prompt,
+            attachments,
+        )} ${args}`;
     });
 
 export const runOpenAICodex = (
@@ -174,15 +245,14 @@ export const runOpenAICodex = (
     attachments: string[] = [],
     allowChanges = false,
 ) =>
-    runWithCredentials('openai-codex', async () => {
+    runWithCredentials('openai-codex', () => {
         const sandbox = allowChanges ? 'workspace-write' : 'read-only';
         const approval = allowChanges ? ['--approve-for-me'] : [];
-        const { stdout } =
-            await $`pnpm dlx --package=@openai/codex@0.171.0 codex exec --sandbox ${sandbox} ${approval} ${promptWithFiles(
-                prompt,
-                attachments,
-            )}`;
-        return stdout.trim();
+
+        return $`pnpm dlx --package=@openai/codex@0.171.0 codex exec --sandbox ${sandbox} ${approval} ${promptWithFiles(
+            prompt,
+            attachments,
+        )}`;
     });
 
 export const runGeminiCLI = (
@@ -190,17 +260,15 @@ export const runGeminiCLI = (
     attachments: string[] = [],
     allowChanges = false,
 ) =>
-    runWithCredentials('gemini-cli', async () => {
+    runWithCredentials('gemini-cli', () => {
         const permissions = allowChanges
             ? ['--yolo']
             : ['--approval-mode', 'plan'];
-        const { stdout } =
-            await $`pnpm dlx --package=@google/gemini-cli@0.70.0 gemini --prompt ${promptWithFiles(
-                prompt,
-                attachments,
-            )} --output-format text ${permissions}`;
 
-        return stdout.trim();
+        return $`pnpm dlx --package=@google/gemini-cli@0.70.0 gemini --prompt ${promptWithFiles(
+            prompt,
+            attachments,
+        )} --output-format text ${permissions}`;
     });
 
 export const runClaudeCode = (
@@ -208,7 +276,7 @@ export const runClaudeCode = (
     attachments: string[] = [],
     allowChanges = false,
 ) =>
-    runWithCredentials('claude-code', async () => {
+    runWithCredentials('claude-code', () => {
         const permissions = allowChanges
             ? [
                   '--permission-mode',
@@ -216,13 +284,11 @@ export const runClaudeCode = (
                   '--allow-dangerously-skip-permissions',
               ]
             : ['--tools', 'Read', '--permission-mode', 'plan'];
-        const { stdout } =
-            await $`pnpm dlx --package=@anthropic-ai/claude-code@2.1.329 claude -p ${promptWithFiles(
-                prompt,
-                attachments,
-            )} --output-format text ${permissions}`;
 
-        return stdout.trim();
+        return $`pnpm dlx --package=@anthropic-ai/claude-code@2.1.329 claude -p ${promptWithFiles(
+            prompt,
+            attachments,
+        )} --output-format text ${permissions}`;
     });
 
 export const runQoderCLI = (
@@ -230,50 +296,45 @@ export const runQoderCLI = (
     attachments: string[] = [],
     allowChanges = false,
 ) =>
-    runWithCredentials('qoder-cli', async () => {
+    runWithCredentials('qoder-cli', () => {
         const permissions = allowChanges ? ['--yolo'] : [];
-        const { stdout } =
-            await $`pnpm dlx --package=@qoder-ai/qodercli@1.1.95 qoder -p ${promptWithFiles(
-                prompt,
-                attachments,
-            )} --output-format text ${permissions}`;
-
-        return stdout.trim();
+        return $`pnpm dlx --package=@qoder-ai/qodercli@1.1.95 qoder -p ${promptWithFiles(
+            prompt,
+            attachments,
+        )} --output-format text ${permissions}`;
     });
 
 export const runKimiCLI = (prompt: string, attachments: string[] = []) =>
-    runWithCredentials('kimi-cli', async () => {
-        const { stdout } = await $`kimi --print -p ${promptWithFiles(
-            prompt,
-            attachments,
-        )} --final-message-only`;
-
-        return stdout.trim();
-    });
+    runWithCredentials(
+        'kimi-cli',
+        () =>
+            $`kimi --print -p ${promptWithFiles(
+                prompt,
+                attachments,
+            )} --final-message-only`,
+    );
 
 export const runKiloCLI = (
     prompt: string,
     attachments: string[] = [],
     allowChanges = false,
 ) =>
-    runWithCredentials('kilo-cli', async () => {
+    runWithCredentials('kilo-cli', () => {
         const files = attachments.flatMap(path => ['--file', path]);
         const permissions = allowChanges ? ['--auto'] : [];
-        const { stdout } =
-            await $`pnpm dlx --package=@kilocode/cli@7.8.32 kilo run ${promptWithFiles(
-                prompt,
-                attachments,
-            )} ${permissions} ${files}`;
 
-        return stdout.trim();
+        return $`pnpm dlx --package=@kilocode/cli@7.8.32 kilo run ${promptWithFiles(
+            prompt,
+            attachments,
+        )} ${permissions} ${files}`;
     });
 
-export async function runAI(
+export function runAI(
     engine: AIEngine,
     prompt: string,
     attachments: string[] = [],
     allowChanges = false,
-) {
+): AsyncGenerator<string> {
     switch (engine) {
         case 'copilot':
             return runCopilot(prompt, attachments);

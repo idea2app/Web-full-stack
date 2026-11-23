@@ -53,15 +53,10 @@ if (action !== 'closed') {
 
     if (issue.parent) {
         const { stdout: parent } =
-            await $`gh issue view ${issue.parent.number} --json state,stateReason,labels`;
+            await $`gh issue view ${issue.parent.number} --json state,stateReason`;
         const parentIssue = JSON.parse(parent);
-        const parentIsDocumentation = parentIssue.labels.some(
-            ({ name }: { name: string }) => name === 'documentation',
-        );
-        if (
-            !isCompletedIssue(parentIssue) &&
-            !(parentIsDocumentation && parentIssue.state === 'OPEN')
-        ) {
+
+        if (!isCompletedIssue(parentIssue)) {
             console.log(
                 `Parent issue #${issue.parent.number} is not completed; assignment is deferred.`,
             );

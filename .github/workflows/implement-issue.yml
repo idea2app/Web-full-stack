@@ -104,5 +104,5 @@ jobs:
                   branch: issue-${{ inputs.issue_number }}
                   commit-message: 'feat: implement issue #${{ inputs.issue_number }}'
                   title: 'feat: implement issue #${{ inputs.issue_number }}'
-                  body: 'Automated implementation for #${{ inputs.issue_number }}. Closes #${{ inputs.issue_number }}.'
+                  body: 'Automated implementation to resolve #${{ inputs.issue_number }}.'
                   delete-branch: true

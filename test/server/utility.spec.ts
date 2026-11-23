@@ -8,9 +8,12 @@ import { parse } from 'yaml';
 import {
     documentDirectory,
     formatRequirementDocument,
+    isAllowedAttachment,
     isCompletedIssue,
+    isValidRequirementInput,
     isValidRequirementTask,
     isValidStoredRequirementTask,
+    parseRequirementOutputLine,
     parseRequirementScopes,
     removeRootHiddenDirectories,
 } from '../../script/utility.ts';
@@ -32,6 +35,7 @@ describe('issue documents', () => {
             {
                 issue: 42,
                 title: 'Example feature',
+                url: 'https://github.com/idea2app/Web-full-stack/issues/42',
                 engine: 'Copilot',
                 scopes: ['server'],
             },
@@ -43,6 +47,7 @@ describe('issue documents', () => {
         assert.deepEqual(parse(frontMatter), {
             issue: 42,
             title: 'Example feature',
+            url: 'https://github.com/idea2app/Web-full-stack/issues/42',
             engine: 'Copilot',
             scopes: ['server'],
         });
@@ -93,6 +98,57 @@ describe('requirement scopes', () => {
     });
 });
 
+describe('requirement input validation', () => {
+    it('accepts HTTPS issue details and supported attachment URLs', () => {
+        assert.equal(
+            isValidRequirementInput({
+                issueNumber: '42',
+                issueUrl:
+                    'https://github.com/idea2app/Web-full-stack/issues/42',
+                issueTitle: 'Example feature',
+                issueBody: 'Describe the feature',
+            }),
+            true,
+        );
+        assert.equal(
+            isAllowedAttachment(
+                'https://github.com/user-attachments/files/42/example.png',
+            ),
+            true,
+        );
+        assert.equal(
+            isAllowedAttachment('https://files.githubusercontent.com/file.png'),
+            true,
+        );
+    });
+
+    it('rejects invalid issue details and unsupported attachment URLs', () => {
+        assert.equal(
+            isValidRequirementInput({
+                issueNumber: '42',
+                issueUrl: 'http://github.com/idea2app/Web-full-stack/issues/42',
+                issueTitle: 'Example feature',
+                issueBody: 'Describe the feature',
+            }),
+            false,
+        );
+        assert.equal(
+            isAllowedAttachment('http://github.com/user-attachments/42'),
+            false,
+        );
+        assert.equal(
+            isAllowedAttachment('https://github.com/issues/42'),
+            false,
+        );
+        assert.equal(
+            isAllowedAttachment(
+                'https://raw.githubusercontent.com/user/repo/file',
+            ),
+            false,
+        );
+    });
+});
+
 describe('completed issues', () => {
     it('accepts only issues closed as completed', () => {
         assert.equal(
@@ -128,10 +184,43 @@ describe('requirement tasks', () => {
         );
     });
 
+    it('parses JSONL task and completion records', () => {
+        assert.deepEqual(
+            parseRequirementOutputLine(
+                JSON.stringify({ type: 'task', ...task }),
+                0,
+                ['server'],
+            ),
+            { type: 'task', task },
+        );
+        assert.deepEqual(
+            parseRequirementOutputLine(
+                JSON.stringify({ type: 'complete', taskCount: 1 }),
+                1,
+                ['server'],
+            ),
+            { type: 'complete', taskCount: 1 },
+        );
+        assert.throws(
+            () =>
+                parseRequirementOutputLine(
+                    JSON.stringify({ type: 'complete', taskCount: -1 }),
+                    1,
+                    ['server'],
+                ),
+            /generated task record is invalid/,
+        );
+    });
+
     it('requires an issue number before delegation', () => {
         assert.equal(
             isValidStoredRequirementTask(
-                { ...task, issue: 42, delegated: true },
+                {
+                    ...task,
+                    issue: 42,
+                    url: 'https://github.com/idea2app/Web-full-stack/issues/42',
+                    delegated: true,
+                },
                 0,
                 ['server'],
             ),
@@ -140,6 +229,14 @@ describe('requirement tasks', () => {
         assert.equal(
             isValidStoredRequirementTask(
                 { ...task, issue: null, delegated: true },
+                0,
+                ['server'],
+            ),
+            false,
+        );
+        assert.equal(
+            isValidStoredRequirementTask(
+                { ...task, issue: 42, url: 'not a URL' },
                 0,
                 ['server'],
             ),

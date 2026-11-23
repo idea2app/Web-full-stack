@@ -57,6 +57,7 @@ jobs:
               run: >-
                   pnpm exec zx script/prepare-requirement.ts
                   --issue-number "$ISSUE_NUMBER"
+                  --issue-url "$ISSUE_URL"
                   --issue-title "$ISSUE_TITLE"
                   --issue-body "$ISSUE_BODY"
                   --fields "$ISSUE_FIELDS"
@@ -70,6 +71,7 @@ jobs:
                   MOONSHOT_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
                   KILO_CONFIG_CONTENT: ${{ secrets.KILO_CONFIG_CONTENT }}
                   ISSUE_NUMBER: ${{ github.event.issue.number }}
+                  ISSUE_URL: ${{ github.event.issue.html_url }}
                   ISSUE_TITLE: ${{ github.event.issue.title }}
                   ISSUE_BODY: ${{ github.event.issue.body }}
                   ISSUE_FIELDS: ${{ steps.parse.outputs.jsonString }}
@@ -95,5 +97,8 @@ jobs:
                   branch: requirements/issue-${{ github.event.issue.number }}
                   commit-message: 'docs: prepare requirement #${{ github.event.issue.number }}'
                   title: 'docs: prepare requirement #${{ github.event.issue.number }}'
-                  body: 'Textify the requirement and attachments, split the tasks, and localize selected scaffold code.'
+                  body: |
+                      ${{ steps.prepare.outputs.complete == 'true' && format('Closes #{0}', github.event.issue.number) || format('Partial task breakdown for #{0}; complete the task list and set status to pending before closing.', github.event.issue.number) }}
+
+                      Textify the requirement and attachments, split the tasks, and localize selected scaffold code.
                   delete-branch: true

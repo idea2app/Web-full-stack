@@ -1,0 +1,46 @@
+name: Task
+description: Describe an end-to-end business task
+title: '[Task] '
+body:
+    - type: textarea
+      id: user_case
+      attributes:
+          label: User case
+          description: Describe who needs what and why, then list the expected outcomes.
+          render: markdown
+          placeholder: |
+              As a [user], I want [goal], so that [value].
+
+              Use Markdown lists, tables, or Mermaid diagrams to explain the business flow and acceptance criteria.
+      validations:
+          required: true
+    - type: textarea
+      id: backend_development
+      attributes:
+          label: Backend development content
+          description: Describe the relevant APIs, business logic, data changes, and tests.
+          render: markdown
+          placeholder: |
+              Describe the backend work and tests for this business flow.
+
+              Use Markdown lists, tables, or Mermaid diagrams when helpful.
+    - type: textarea
+      id: frontend_development
+      attributes:
+          label: Frontend development content
+          description: Describe the relevant browser pages and user interactions.
+          render: markdown
+          placeholder: |
+              Describe the browser pages and interactions for this business flow.
+
+              Use Markdown lists, tables, or Mermaid diagrams when helpful.
+    - type: textarea
+      id: mobile_development
+      attributes:
+          label: Mobile development content
+          description: Describe the relevant mobile pages and user interactions.
+          render: markdown
+          placeholder: |
+              Describe the mobile pages and interactions for this business flow.
+
+              Use Markdown lists, tables, or Mermaid diagrams when helpful.
