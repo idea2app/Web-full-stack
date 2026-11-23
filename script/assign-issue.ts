@@ -2,7 +2,7 @@
 
 import { $, argv } from 'zx';
 
-import type { AIEngine } from './ai-cli.ts';
+import { isCompletedIssue, type AIEngine } from './utility.ts';
 
 $.verbose = true;
 
@@ -10,7 +10,11 @@ const issueNumber = String(argv._[0] ?? '');
 const action = String(argv._[1] ?? '');
 const defaultBranch = String(argv._[2] ?? '');
 
-if (!issueNumber || !['opened', 'closed'].includes(action) || !defaultBranch)
+if (
+    !issueNumber ||
+    !['opened', 'reopened', 'closed'].includes(action) ||
+    !defaultBranch
+)
     throw new Error('Issue number, action, and default branch are required.');
 
 const engineByLabel: Record<string, AIEngine> = {
@@ -36,7 +40,7 @@ async function routeIssue(number: number | string, labels: { name: string }[]) {
     }
 }
 
-if (action === 'opened') {
+if (action !== 'closed') {
     const { stdout } =
         await $`gh issue view ${issueNumber} --json labels,parent`;
     const issue = JSON.parse(stdout);
@@ -49,14 +53,17 @@ if (action === 'opened') {
 
     if (issue.parent) {
         const { stdout: parent } =
-            await $`gh issue view ${issue.parent.number} --json state,labels`;
+            await $`gh issue view ${issue.parent.number} --json state,stateReason,labels`;
         const parentIssue = JSON.parse(parent);
         const parentIsDocumentation = parentIssue.labels.some(
             ({ name }: { name: string }) => name === 'documentation',
         );
-        if (!parentIsDocumentation && parentIssue.state !== 'CLOSED') {
+        if (
+            !isCompletedIssue(parentIssue) &&
+            !(parentIsDocumentation && parentIssue.state === 'OPEN')
+        ) {
             console.log(
-                `Parent issue #${issue.parent.number} is not closed; assignment is deferred.`,
+                `Parent issue #${issue.parent.number} is not completed; assignment is deferred.`,
             );
             process.exit(0);
         }

@@ -6,11 +6,12 @@ import { tmpdir } from 'node:os';
 import { $, argv, fs, path } from 'zx';
 import { parse, stringify } from 'yaml';
 
-import type { AIEngine } from './ai-cli.ts';
 import {
+    isCompletedIssue,
     isValidStoredRequirementTask,
+    type AIEngine,
     type StoredRequirementTask,
-} from './requirement-task.ts';
+} from './utility.ts';
 
 $.verbose = true;
 
@@ -150,10 +151,11 @@ const candidates = entries
 let changed = false;
 
 for (const { directory, number } of candidates) {
-    const { stdout } = await $`gh issue view ${number} --json state,labels`;
+    const { stdout } =
+        await $`gh issue view ${number} --json state,stateReason,labels`;
     const issue = JSON.parse(stdout);
     if (
-        issue.state !== 'CLOSED' ||
+        !isCompletedIssue(issue) ||
         !issue.labels.some(
             ({ name }: { name: string }) => name === 'documentation',
         )

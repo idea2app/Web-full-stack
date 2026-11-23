@@ -1,6 +1,91 @@
-#! /usr/bin/env node
+import { $, path } from 'zx';
 
-import { $ } from 'zx';
+export function documentDirectory(title: string, issueNumber: string) {
+    const slug = title
+        .normalize('NFKC')
+        .replace(/[^\p{L}\p{N} .()_-]+/gu, '-')
+        .replace(/\.{2,}/g, '.')
+        .trim()
+        .replace(/^[ .-]+|[ .-]+$/g, '')
+        .replace(/[ ._-]+/g, '-')
+        .slice(0, 100);
+    return path.join('documents', `${slug || 'issue'}-${issueNumber}`);
+}
+
+export function isCompletedIssue(issue: {
+    state: string;
+    stateReason: string | null;
+}): boolean {
+    return issue.state === 'CLOSED' && issue.stateReason === 'COMPLETED';
+}
+
+export function parseRequirementScopes(value: unknown): string[] {
+    const values: unknown[] = Array.isArray(value) ? value : [value];
+
+    if (!values.every((item): item is string => typeof item === 'string'))
+        throw new Error('Select one or more valid development scopes.');
+
+    const scopes = values
+        .flatMap(item => item.split(','))
+        .map(scope => scope.trim());
+    const allowedScopes = new Set(['server', 'browser', 'mobile']);
+
+    if (!scopes.length || scopes.some(scope => !allowedScopes.has(scope)))
+        throw new Error('Select one or more valid development scopes.');
+
+    return scopes;
+}
+
+export interface RequirementTask {
+    title: string;
+    body: string;
+    labels: string[];
+    dependsOn: number | null;
+}
+
+export interface StoredRequirementTask extends RequirementTask {
+    issue: number | null;
+    delegated?: boolean;
+}
+
+export const isObject = (value: unknown): value is Record<string, unknown> =>
+    !!value && typeof value === 'object' && !Array.isArray(value);
+
+export const isPositiveInteger = (value: unknown): value is number =>
+    Number.isInteger(value) && (value as number) > 0;
+
+export const isValidRequirementTask = (
+    task: unknown,
+    index: number,
+    scopes: readonly string[],
+): task is RequirementTask =>
+    isObject(task) &&
+    typeof task.title === 'string' &&
+    !!task.title.trim() &&
+    task.title.length <= 200 &&
+    typeof task.body === 'string' &&
+    !!task.body.trim() &&
+    task.body.length <= 30_000 &&
+    Array.isArray(task.labels) &&
+    task.labels.length > 0 &&
+    task.labels.every(
+        (label: unknown) => typeof label === 'string' && scopes.includes(label),
+    ) &&
+    (task.dependsOn === null ||
+        (Number.isInteger(task.dependsOn) &&
+            (task.dependsOn as number) >= 0 &&
+            (task.dependsOn as number) < index));
+
+export const isValidStoredRequirementTask = (
+    task: unknown,
+    index: number,
+    scopes: readonly string[],
+): task is StoredRequirementTask =>
+    isObject(task) &&
+    isValidRequirementTask(task, index, scopes) &&
+    (task.issue === null || isPositiveInteger(task.issue)) &&
+    (task.delegated === undefined || typeof task.delegated === 'boolean') &&
+    (task.delegated !== true || isPositiveInteger(task.issue));
 
 export type AIEngine =
     | 'copilot'

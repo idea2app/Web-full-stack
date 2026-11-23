@@ -6,9 +6,13 @@ import { tmpdir } from 'node:os';
 import { $, argv, fs, path } from 'zx';
 import { stringify } from 'yaml';
 
-import { runAI, type AIEngine } from './ai-cli.ts';
-import { documentDirectory } from './issue-document.ts';
-import { isValidRequirementTask } from './requirement-task.ts';
+import {
+    documentDirectory,
+    isValidRequirementTask,
+    parseRequirementScopes,
+    runAI,
+    type AIEngine,
+} from './utility.ts';
 
 $.verbose = true;
 
@@ -20,14 +24,7 @@ const fields = JSON.parse(String(argv.fields ?? '{}'));
 if (!issueNumber || !issueTitle || !issueBody)
     throw new Error('Issue number, title, and body are required.');
 
-const rawScopes: unknown[] = Array.isArray(fields.scopes)
-    ? fields.scopes
-    : [fields.scopes];
-const allowedScopes = new Set(['server', 'browser', 'mobile']);
-const scopes = rawScopes.filter(
-    (value: unknown): value is string =>
-        typeof value === 'string' && allowedScopes.has(value),
-);
+const scopes = parseRequirementScopes(fields.scopes);
 const engineByLabel: Record<string, AIEngine> = {
     Copilot: 'copilot',
     'OpenAI Codex': 'openai-codex',
@@ -40,9 +37,6 @@ const engineByLabel: Record<string, AIEngine> = {
 const engine = Object.hasOwn(engineByLabel, fields.engine)
     ? engineByLabel[fields.engine]
     : undefined;
-if (!scopes.length || scopes.some(scope => !allowedScopes.has(scope)))
-    throw new Error('Select one or more valid development scopes.');
-
 if (!engine) throw new Error('Select a supported AI agent.');
 
 function allowedAttachment(rawUrl: string) {
@@ -139,7 +133,7 @@ Return only one valid JSON object with this schema:
 
 Each task must have one or more labels chosen only from ${JSON.stringify(
     scopes,
-)}. dependsOn must be null or the zero-based index of an earlier task. Return at most 10 tasks. Keep the task descriptions grounded in the requirement.
+)}. dependsOn must be null or the zero-based index of an earlier task. Return at most 10 tasks. Write every task title and body in the same natural language as the original requirement, ignoring the language of the surrounding template. Keep JSON keys, labels, and technical names unchanged. Keep the task descriptions grounded in the requirement.
 
 <requirement-document>
 ${savedContent}
@@ -179,6 +173,4 @@ await fs.outputFile(
     stringify(tasks),
     'utf8',
 );
-await $`gh issue edit ${issueNumber} --add-label ${`agent-${engine}`}`;
-
 await fs.appendFile(process.env.GITHUB_OUTPUT!, `scopes=${scopes.join(' ')}\n`);

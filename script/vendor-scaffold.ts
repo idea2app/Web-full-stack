@@ -26,4 +26,4 @@ for (const scope of new Set(scopes)) {
     localized = true;
 }
 
-if (localized) await $`pnpm -r i`;
+if (localized) await $`pnpm -r i --no-frozen-lockfile`;
