@@ -1,16 +1,16 @@
 #! /usr/bin/env node
 
 import 'array-unique-proposal';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { $, argv, fs, path } from 'zx';
+import { $, argv, fs, os, path } from 'zx';
 import { parse, stringify } from 'yaml';
 
-import type { AIEngine } from './ai-cli.ts';
 import {
+    isCompletedIssue,
     isValidStoredRequirementTask,
+    type AIEngine,
+    type RequirementPlan,
     type StoredRequirementTask,
-} from './requirement-task.ts';
+} from './utility.ts';
 
 $.verbose = true;
 
@@ -30,14 +30,10 @@ const validEngines = new Set([
 ]);
 const validScopes = new Set(['server', 'browser', 'mobile']);
 
-interface RequirementPlan {
-    engine: string;
-    tasks: StoredRequirementTask[];
-}
-
 interface ExistingChildIssue {
     number: number;
     body: string;
+    url: string;
 }
 
 interface TaskIssueContext {
@@ -51,9 +47,10 @@ const taskMarker = (issueNumber: string, index: number) =>
     `<!-- requirement-task:${issueNumber}:${index} -->`;
 
 async function fetchIssueBody(number: number): Promise<ExistingChildIssue> {
-    const { stdout } = await $`gh issue view ${number} --json body`;
+    const { stdout } = await $`gh issue view ${number} --json body,url`;
+    const { body, url } = JSON.parse(stdout);
 
-    return { number, body: JSON.parse(stdout).body };
+    return { number, body, url };
 }
 
 async function loadExistingChildren(
@@ -72,7 +69,14 @@ async function ensureTaskIssue(
     index: number,
     task: StoredRequirementTask,
 ): Promise<boolean> {
-    if (task.issue) return false;
+    if (task.issue) {
+        if (task.url) return false;
+
+        const existing = await fetchIssueBody(task.issue);
+        task.url = existing.url;
+        await fs.outputFile(context.tasksPath, stringify(context.plan), 'utf8');
+        return true;
+    }
 
     if (!context.existingChildren)
         context.existingChildren = await loadExistingChildren(
@@ -83,11 +87,12 @@ async function ensureTaskIssue(
     );
     if (existing) {
         task.issue = existing.number;
+        task.url = existing.url;
         await fs.outputFile(context.tasksPath, stringify(context.plan), 'utf8');
         return true;
     }
 
-    const directory = await mkdtemp(path.join(tmpdir(), 'task-issue-'));
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'task-issue-'));
     try {
         const labels = [
             ...task.labels,
@@ -104,21 +109,23 @@ async function ensureTaskIssue(
                 : `\n\nDepends on task #${
                       context.plan.tasks[task.dependsOn].issue
                   }.`;
-        await writeFile(
+        await fs.writeFile(
             bodyPath,
             `${taskMarker(context.issueNumber, index)}\n\n${task.body}${dependsOn}`,
             'utf8',
         );
-        const { stdout: url } = await $`gh issue create --title ${
+        const { stdout } = await $`gh issue create --title ${
             task.title
         } --body-file ${bodyPath} --parent ${context.issueNumber} ${labels.flatMap(
             (label: string) => ['--label', label],
         )}`;
-        const [, createdIssue] = url.trim().match(/\/issues\/(\d+)\s*$/) || [];
+        const url = stdout.trim();
+        const [, createdIssue] = url.match(/\/issues\/(\d+)\s*$/) || [];
         if (!createdIssue)
             throw new Error('Could not determine the created issue number.');
 
         task.issue = Number(createdIssue);
+        task.url = url;
         await fs.outputFile(context.tasksPath, stringify(context.plan), 'utf8');
         return true;
     } catch (error) {
@@ -127,7 +134,7 @@ async function ensureTaskIssue(
         );
         throw error;
     } finally {
-        await rm(directory, { recursive: true, force: true });
+        await fs.rm(directory, { recursive: true, force: true });
     }
 }
 
@@ -150,10 +157,11 @@ const candidates = entries
 let changed = false;
 
 for (const { directory, number } of candidates) {
-    const { stdout } = await $`gh issue view ${number} --json state,labels`;
+    const { stdout } =
+        await $`gh issue view ${number} --json state,stateReason,labels,url`;
     const issue = JSON.parse(stdout);
     if (
-        issue.state !== 'CLOSED' ||
+        !isCompletedIssue(issue) ||
         !issue.labels.some(
             ({ name }: { name: string }) => name === 'documentation',
         )
@@ -163,28 +171,40 @@ for (const { directory, number } of candidates) {
     const tasksPath = path.join('documents', directory, 'tasks.yml');
     if (!(await fs.pathExists(tasksPath))) continue;
 
-    const plan = parse(await fs.readFile(tasksPath, 'utf8'));
+    const plan: RequirementPlan | null = parse(
+        await fs.readFile(tasksPath, 'utf8'),
+    );
     if (!plan || plan.issue !== Number(number))
         throw new Error(
             `Invalid task plan for documentation issue #${number}.`,
         );
+    const recoveredPlanUrl = !plan.url && URL.canParse(issue.url);
+    if (recoveredPlanUrl) plan.url = issue.url;
+
     const isValidStoredTask = (task: unknown, index: number) =>
         isValidStoredRequirementTask(task, index, plan.scopes);
     if (
         !Array.isArray(plan.tasks) ||
         plan.tasks.length < 1 ||
-        plan.tasks.length > 10 ||
         !validEngines.has(plan.engine) ||
         !Array.isArray(plan.scopes) ||
         !plan.scopes.length ||
+        typeof plan.url !== 'string' ||
+        !URL.canParse(plan.url) ||
         plan.scopes.some((scope: string) => !validScopes.has(scope)) ||
         !plan.tasks.every(isValidStoredTask) ||
-        !['pending', 'processing', 'completed'].includes(plan.status)
+        !['pending', 'processing', 'incomplete', 'completed'].includes(
+            plan.status,
+        )
     )
         throw new Error(
             `Invalid task plan for documentation issue #${number}.`,
         );
-    if (plan.status === 'completed') continue;
+    if (recoveredPlanUrl) {
+        await fs.outputFile(tasksPath, stringify(plan), 'utf8');
+        changed = true;
+    }
+    if (plan.status === 'incomplete' || plan.status === 'completed') continue;
 
     const taskContext: TaskIssueContext = {
         issueNumber: number,
@@ -223,12 +243,7 @@ for (const { directory, number } of candidates) {
         changed = true;
     }
 
-    if (
-        !plan.tasks.some(
-            (task: { issue?: number; delegated?: boolean }) =>
-                !task.issue || !task.delegated,
-        )
-    ) {
+    if (!plan.tasks.some(task => !task.issue || !task.delegated)) {
         plan.status = 'completed';
         await fs.outputFile(tasksPath, stringify(plan), 'utf8');
         changed = true;

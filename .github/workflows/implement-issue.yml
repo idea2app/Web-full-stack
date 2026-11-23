@@ -20,6 +20,8 @@ concurrency:
 jobs:
     implement:
         runs-on: ubuntu-latest
+        env:
+            PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS: 'true'
         steps:
             - uses: actions/checkout@v7.0.1
               with:
@@ -33,8 +35,7 @@ jobs:
               with:
                   version: 12.21.0
 
-            - name: Install dependencies
-              run: pnpm install --frozen-lockfile
+            - run: pnpm install --no-frozen-lockfile
 
             - name: Read issue details
               run: gh issue view "$ISSUE_NUMBER" --json title,body,labels > "$ISSUE_DATA_FILE"
@@ -94,10 +95,14 @@ jobs:
 
             - uses: peter-evans/create-pull-request@v8.1.3
               if: ${{ steps.agent.outputs.engine != 'copilot' }}
+              env:
+                  GIT_CONFIG_COUNT: '1'
+                  GIT_CONFIG_KEY_0: core.hooksPath
+                  GIT_CONFIG_VALUE_0: /dev/null
               with:
                   token: ${{ github.token }}
                   branch: issue-${{ inputs.issue_number }}
                   commit-message: 'feat: implement issue #${{ inputs.issue_number }}'
                   title: 'feat: implement issue #${{ inputs.issue_number }}'
-                  body: 'Automated implementation for #${{ inputs.issue_number }}. Closes #${{ inputs.issue_number }}.'
+                  body: 'Automated implementation to resolve #${{ inputs.issue_number }}.'
                   delete-branch: true

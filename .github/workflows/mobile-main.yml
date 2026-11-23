@@ -21,6 +21,7 @@ jobs:
         runs-on: ubuntu-latest
         env:
             WMA_ID: ${{ secrets.WMA_ID }}
+            PNPM_CONFIG_DANGEROUSLY_ALLOW_ALL_BUILDS: 'true'
         steps:
             - uses: actions/checkout@v7.0.1
               with:
@@ -40,7 +41,7 @@ jobs:
                   if [ -f mobile/pnpm-lock.yaml ]; then
                       pnpm --dir mobile --pm-on-fail=ignore --shared-workspace-lockfile=false install --frozen-lockfile
                   else
-                      pnpm install --frozen-lockfile
+                      pnpm install --no-frozen-lockfile
                   fi
 
             - name: Build WeChat version

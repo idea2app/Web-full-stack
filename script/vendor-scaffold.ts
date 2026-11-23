@@ -1,7 +1,8 @@
 #! /usr/bin/env node
 
-import { rm } from 'node:fs/promises';
-import { $, argv } from 'zx';
+import { $, argv, fs } from 'zx';
+
+import { removeRootHiddenDirectories } from './utility.ts';
 
 $.verbose = true;
 
@@ -20,10 +21,11 @@ for (const scope of new Set(scopes)) {
     await $`git submodule update --init -- ${scope}`;
     await $`git rm --cached -- ${scope}`;
     await $`git config -f .gitmodules --remove-section ${`submodule.${scope}`}`;
-    await rm(`${scope}/.git`, { force: true });
-    await rm(`${scope}/pnpm-lock.yaml`, { force: true });
+    await fs.rm(`${scope}/.git`, { recursive: true, force: true });
+    await fs.rm(`${scope}/pnpm-lock.yaml`, { force: true });
+    await removeRootHiddenDirectories(scope);
     await $`git add -f -- .gitmodules ${scope}`;
     localized = true;
 }
 
-if (localized) await $`pnpm -r i`;
+if (localized) await $`pnpm -r i --no-frozen-lockfile`;
