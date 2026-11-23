@@ -6,11 +6,15 @@ import { parse, stringify } from 'yaml';
 
 import {
     isCompletedIssue,
-    isValidStoredRequirementTask,
-    type AIEngine,
+    routeIssueIfReady,
+    taskDependencies,
+} from './utility.ts';
+import {
+    RequirementPlanSchema,
+    parseIssueReferences,
     type RequirementPlan,
     type StoredRequirementTask,
-} from './utility.ts';
+} from './schema.ts';
 
 $.verbose = true;
 
@@ -19,17 +23,6 @@ if (!defaultBranch)
     throw new Error(
         'The default branch must be provided as a command-line argument.',
     );
-const validEngines = new Set([
-    'copilot',
-    'openai-codex',
-    'gemini-cli',
-    'claude-code',
-    'qoder-cli',
-    'kimi-cli',
-    'kilo-cli',
-]);
-const validScopes = new Set(['server', 'browser', 'mobile']);
-
 interface ExistingChildIssue {
     number: number;
     body: string;
@@ -58,8 +51,8 @@ async function loadExistingChildren(
 ): Promise<ExistingChildIssue[]> {
     const { stdout } = await $`gh issue view ${issueNumber} --json subIssues`;
 
-    const issueNumbers: number[] = JSON.parse(stdout).subIssues.map(
-        ({ number }: { number: number }) => number,
+    const issueNumbers = parseIssueReferences(stdout, 'subIssues').map(
+        ({ number }) => number,
     );
     return Promise.all(issueNumbers.map(fetchIssueBody));
 }
@@ -103,20 +96,23 @@ async function ensureTaskIssue(
             await $`gh label create ${label} --color 1D76DB --description ${`${label} scaffold work`} --force`;
 
         const bodyPath = path.join(directory, 'body.md');
-        const dependsOn =
-            task.dependsOn === null
-                ? ''
-                : `\n\nDepends on task #${
-                      context.plan.tasks[task.dependsOn].issue
-                  }.`;
         await fs.writeFile(
             bodyPath,
-            `${taskMarker(context.issueNumber, index)}\n\n${task.body}${dependsOn}`,
+            `${taskMarker(context.issueNumber, index)}\n\n${task.body}`,
             'utf8',
         );
+        const dependencies = taskDependencies(task).map(
+            dependency => context.plan.tasks[dependency].issue,
+        );
+        if (dependencies.some(number => !number))
+            throw new Error(`Missing prerequisite issue for task ${index}.`);
+
+        const blockedBy = dependencies.length
+            ? ['--blocked-by', dependencies.join(',')]
+            : [];
         const { stdout } = await $`gh issue create --title ${
             task.title
-        } --body-file ${bodyPath} --parent ${context.issueNumber} ${labels.flatMap(
+        } --body-file ${bodyPath} --parent ${context.issueNumber} ${blockedBy} ${labels.flatMap(
             (label: string) => ['--label', label],
         )}`;
         const url = stdout.trim();
@@ -136,6 +132,31 @@ async function ensureTaskIssue(
     } finally {
         await fs.rm(directory, { recursive: true, force: true });
     }
+}
+
+async function ensureTaskDependencies(
+    context: TaskIssueContext,
+    task: StoredRequirementTask,
+): Promise<void> {
+    const dependencies = taskDependencies(task).map(
+        index => context.plan.tasks[index],
+    );
+    if (!dependencies.length) return;
+    if (
+        !task.issue ||
+        dependencies.some(dependency => !dependency.issue || !dependency.url)
+    )
+        throw new Error('Task or prerequisite issue details are missing.');
+
+    const { stdout } = await $`gh issue view ${task.issue} --json blockedBy`;
+    const existing = new Set(
+        parseIssueReferences(stdout, 'blockedBy').map(({ url }) => url),
+    );
+    const missing = dependencies.filter(
+        dependency => dependency.url && !existing.has(dependency.url),
+    );
+    if (missing.length)
+        await $`gh issue edit ${task.issue} --add-blocked-by ${missing.map(dependency => dependency.issue).join(',')}`;
 }
 
 const entries: { isDirectory: () => boolean; name: string }[] =
@@ -171,40 +192,29 @@ for (const { directory, number } of candidates) {
     const tasksPath = path.join('documents', directory, 'tasks.yml');
     if (!(await fs.pathExists(tasksPath))) continue;
 
-    const plan: RequirementPlan | null = parse(
-        await fs.readFile(tasksPath, 'utf8'),
+    const parsedPlan = RequirementPlanSchema.safeParse(
+        parse(await fs.readFile(tasksPath, 'utf8')),
     );
-    if (!plan || plan.issue !== Number(number))
+    if (!parsedPlan.success)
         throw new Error(
-            `Invalid task plan for documentation issue #${number}.`,
+            `Invalid task plan for documentation issue #${number}: ${parsedPlan.error.message}`,
+        );
+    const plan = parsedPlan.data;
+    if (plan.issue !== Number(number))
+        throw new Error(
+            `Invalid task plan for documentation issue #${number}: issue number does not match.`,
         );
     const recoveredPlanUrl = !plan.url && URL.canParse(issue.url);
     if (recoveredPlanUrl) plan.url = issue.url;
-
-    const isValidStoredTask = (task: unknown, index: number) =>
-        isValidStoredRequirementTask(task, index, plan.scopes);
-    if (
-        !Array.isArray(plan.tasks) ||
-        plan.tasks.length < 1 ||
-        !validEngines.has(plan.engine) ||
-        !Array.isArray(plan.scopes) ||
-        !plan.scopes.length ||
-        typeof plan.url !== 'string' ||
-        !URL.canParse(plan.url) ||
-        plan.scopes.some((scope: string) => !validScopes.has(scope)) ||
-        !plan.tasks.every(isValidStoredTask) ||
-        !['pending', 'processing', 'incomplete', 'completed'].includes(
-            plan.status,
-        )
-    )
+    if (typeof plan.url !== 'string' || !URL.canParse(plan.url))
         throw new Error(
-            `Invalid task plan for documentation issue #${number}.`,
+            `Invalid task plan for documentation issue #${number}: a valid URL is required.`,
         );
     if (recoveredPlanUrl) {
         await fs.outputFile(tasksPath, stringify(plan), 'utf8');
         changed = true;
     }
-    if (plan.status === 'incomplete' || plan.status === 'completed') continue;
+    if (plan.status !== 'pending') continue;
 
     const taskContext: TaskIssueContext = {
         issueNumber: number,
@@ -213,41 +223,23 @@ for (const { directory, number } of candidates) {
     };
 
     for (const [index, task] of plan.tasks.entries()) {
-        if (
-            await ensureTaskIssue(
-                taskContext,
-                index,
-                task as StoredRequirementTask,
-            )
-        )
+        if (await ensureTaskIssue(taskContext, index, task)) changed = true;
+
+        await ensureTaskDependencies(taskContext, task);
+    }
+
+    for (const task of plan.tasks) {
+        if (task.delegated || !task.issue) continue;
+
+        if (await routeIssueIfReady(task.issue, defaultBranch)) {
+            task.delegated = true;
+            await fs.outputFile(tasksPath, stringify(plan), 'utf8');
             changed = true;
-
-        if (task.delegated) continue;
-
-        const engine = plan.engine as AIEngine;
-        let delegated = false;
-
-        if (engine === 'copilot') {
-            const { exitCode } =
-                await $`gh issue edit ${task.issue} --add-assignee @copilot`.nothrow();
-
-            delegated = exitCode === 0;
-        } else {
-            const { exitCode } =
-                await $`gh workflow run implement-issue.yml --ref ${defaultBranch} -f ${`issue_number=${task.issue}`}`.nothrow();
-
-            delegated = exitCode === 0;
         }
-        task.delegated = delegated;
-        await fs.outputFile(tasksPath, stringify(plan), 'utf8');
-        changed = true;
     }
-
-    if (!plan.tasks.some(task => !task.issue || !task.delegated)) {
-        plan.status = 'completed';
-        await fs.outputFile(tasksPath, stringify(plan), 'utf8');
-        changed = true;
-    }
+    plan.status = 'completed';
+    await fs.outputFile(tasksPath, stringify(plan), 'utf8');
+    changed = true;
 }
 
 if (!changed) process.exit(0);

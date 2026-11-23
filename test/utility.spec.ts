@@ -7,16 +7,21 @@ import { parse } from 'yaml';
 
 import {
     documentDirectory,
+    findIssueAgent,
     formatRequirementDocument,
     isAllowedAttachment,
     isCompletedIssue,
+    removeRootHiddenDirectories,
+    taskDependencies,
+} from '../script/utility.ts';
+import {
     isValidRequirementInput,
     isValidRequirementTask,
     isValidStoredRequirementTask,
+    parseIssueReferences,
     parseRequirementOutputLine,
     parseRequirementScopes,
-    removeRootHiddenDirectories,
-} from '../../script/utility.ts';
+} from '../script/schema.ts';
 
 describe('issue documents', () => {
     it('creates a safe directory for the issue title', () => {
@@ -30,28 +35,48 @@ describe('issue documents', () => {
         );
     });
 
-    it('stores issue metadata in YAML front matter and preserves the body', () => {
+    it('uses form metadata and renders the requirement as Markdown', () => {
         const document = formatRequirementDocument(
             {
-                issue: 42,
+                issue: 'https://github.com/idea2app/Web-full-stack/issues/42',
                 title: 'Example feature',
-                url: 'https://github.com/idea2app/Web-full-stack/issues/42',
                 engine: 'Copilot',
-                scopes: ['server'],
+                scopes: 'server, browser',
+                requirement:
+                    '```markdown\n# Overview\n\nBuild the feature.\n\n```ts\n# code\n```\n```',
             },
-            '# Requirement\n\nBuild the feature.',
+            '# Attachment heading\n\nAttachment content.',
         );
         const [, frontMatter, body] =
             document.match(/^---\n([\s\S]*?)\n---\n\n([\s\S]*)$/) ?? [];
 
         assert.deepEqual(parse(frontMatter), {
-            issue: 42,
+            issue: 'https://github.com/idea2app/Web-full-stack/issues/42',
             title: 'Example feature',
-            url: 'https://github.com/idea2app/Web-full-stack/issues/42',
             engine: 'Copilot',
-            scopes: ['server'],
+            scopes: ['server', 'browser'],
         });
-        assert.equal(body, '# Requirement\n\nBuild the feature.\n');
+        assert.equal(
+            body,
+            '# Example feature\n\n# Overview\n\nBuild the feature.\n\n```ts\n# code\n```\n\n## Attachment text\n\n# Attachment heading\n\nAttachment content.\n',
+        );
+    });
+
+    it('preserves unwrapped Markdown and rejects missing requirement details', () => {
+        const document = formatRequirementDocument({
+            title: 'Example',
+            scopes: ['server'],
+            requirement: 'Overview\n========\n\n### Details',
+        });
+
+        assert.match(
+            document,
+            /# Example\n\nOverview\n========\n\n### Details\n$/,
+        );
+        assert.throws(
+            () => formatRequirementDocument({ title: 'Example' }),
+            /requirement details must not be empty/,
+        );
     });
 });
 
@@ -77,11 +102,10 @@ describe('scaffold directories', () => {
 
 describe('requirement scopes', () => {
     it('parses comma-separated selections and arrays', () => {
-        assert.deepEqual(parseRequirementScopes('server, browser, mobile'), [
-            'server',
-            'browser',
-            'mobile',
-        ]);
+        assert.deepEqual(
+            parseRequirementScopes('server, browser, mobile, skill'),
+            ['server', 'browser', 'mobile', 'skill'],
+        );
         assert.deepEqual(parseRequirementScopes(['browser', 'mobile']), [
             'browser',
             'mobile',
@@ -167,20 +191,144 @@ describe('completed issues', () => {
     });
 });
 
+describe('issue relationships', () => {
+    it('parses the gh connection for empty and populated results', () => {
+        assert.deepEqual(
+            parseIssueReferences(
+                '{"subIssues":{"nodes":[],"totalCount":0}}',
+                'subIssues',
+            ),
+            [],
+        );
+        const nodes = [
+            {
+                number: 42,
+                state: 'OPEN',
+                url: 'https://github.com/a/b/issues/42',
+            },
+            {
+                number: 43,
+                state: 'CLOSED',
+                url: 'https://github.com/a/b/issues/43',
+            },
+        ];
+        assert.deepEqual(
+            parseIssueReferences(
+                JSON.stringify({ subIssues: { nodes, totalCount: 2 } }),
+                'subIssues',
+            ),
+            nodes,
+        );
+    });
+
+    describe('issue dependencies', () => {
+        it('parses dependency connections and rejects incomplete results', () => {
+            const nodes = [
+                {
+                    number: 42,
+                    state: 'CLOSED',
+                    url: 'https://github.com/a/b/issues/42',
+                },
+                {
+                    number: 43,
+                    state: 'OPEN',
+                    url: 'https://github.com/a/b/issues/43',
+                },
+            ];
+            assert.deepEqual(
+                parseIssueReferences(
+                    JSON.stringify({ blockedBy: { nodes, totalCount: 2 } }),
+                    'blockedBy',
+                ),
+                nodes,
+            );
+            assert.throws(
+                () =>
+                    parseIssueReferences(
+                        JSON.stringify({ blockedBy: { nodes, totalCount: 3 } }),
+                        'blockedBy',
+                    ),
+                /Invalid or incomplete blockedBy/,
+            );
+        });
+    });
+
+    it('rejects malformed or incomplete responses', () => {
+        for (const subIssues of [
+            [],
+            { nodes: [{ number: 42 }], totalCount: 1 },
+            { nodes: [], totalCount: 1 },
+        ])
+            assert.throws(
+                () =>
+                    parseIssueReferences(
+                        JSON.stringify({ subIssues }),
+                        'subIssues',
+                    ),
+                /Invalid or incomplete subIssues/,
+            );
+    });
+});
+
+describe('issue agent labels', () => {
+    it('selects the first supported non-Copilot agent from prefixed labels', () => {
+        assert.equal(
+            findIssueAgent([
+                'server',
+                'agent-unknown',
+                'agent-copilot',
+                'agent-kimi-cli',
+                'agent-gemini-cli',
+            ]),
+            'kimi-cli',
+        );
+        assert.equal(
+            findIssueAgent(['kimi-cli', 'agent-constructor', 'agent-copilot']),
+            undefined,
+        );
+    });
+});
+
 describe('requirement tasks', () => {
     const task = {
         title: 'Implement feature',
         body: 'Describe the feature',
         labels: ['server'],
-        dependsOn: null,
+        dependsOn: [],
     };
 
     it('validates scopes and dependencies', () => {
         assert.equal(isValidRequirementTask(task, 0, ['server']), true);
+        assert.equal(
+            isValidRequirementTask({ ...task, labels: ['skill'] }, 0, [
+                'server',
+                'skill',
+            ]),
+            true,
+        );
         assert.equal(isValidRequirementTask(task, 0, ['browser']), false);
         assert.equal(
             isValidRequirementTask({ ...task, dependsOn: 0 }, 0, ['server']),
             false,
+        );
+        assert.equal(
+            isValidRequirementTask({ ...task, dependsOn: [0, 1] }, 2, [
+                'server',
+            ]),
+            true,
+        );
+        for (const dependsOn of [[0, 0], [2], [-1], [1.5]])
+            assert.equal(
+                isValidRequirementTask({ ...task, dependsOn }, 2, ['server']),
+                false,
+            );
+        assert.deepEqual(
+            taskDependencies({ ...task, issue: null, dependsOn: 0 }),
+            [0],
+        );
+        assert.deepEqual(
+            taskDependencies({ ...task, issue: null, dependsOn: null }),
+            [],
         );
     });
 
@@ -212,7 +360,43 @@ describe('requirement tasks', () => {
         );
     });
 
+    it('accepts streamed skill tasks only when skill is selected', () => {
+        const record = JSON.stringify({
+            type: 'task',
+            ...task,
+            labels: ['server', 'skill'],
+        });
+
+        assert.deepEqual(
+            parseRequirementOutputLine(record, 0, ['server', 'skill']),
+            {
+                type: 'task',
+                task: { ...task, labels: ['server', 'skill'] },
+            },
+        );
+        assert.throws(
+            () => parseRequirementOutputLine(record, 0, ['server']),
+            /generated task record is invalid/,
+        );
+    });
+
     it('requires an issue number before delegation', () => {
+        assert.equal(
+            isValidStoredRequirementTask(
+                { ...task, dependsOn: 0, issue: null },
+                1,
+                ['server'],
+            ),
+            true,
+        );
+        assert.equal(
+            isValidStoredRequirementTask(
+                { ...task, dependsOn: null, issue: null },
+                0,
+                ['server'],
+            ),
+            true,
+        );
         assert.equal(
             isValidStoredRequirementTask(
                 {
