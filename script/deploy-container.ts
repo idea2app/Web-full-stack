@@ -1,8 +1,6 @@
 #! /usr/bin/env node
 
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { $, argv, fs, path } from 'zx';
+import { $, argv, fs, os, path } from 'zx';
 
 $.verbose = true;
 
@@ -29,7 +27,7 @@ delete process.env.HOST;
 delete process.env.SSH_KEY;
 delete process.env.USER;
 
-const directory = await mkdtemp(path.join(tmpdir(), `deploy-${scope}-`));
+const directory = await fs.mkdtemp(path.join(os.tmpdir(), `deploy-${scope}-`));
 const artifactPath = path.join(directory, 'artifact.tar');
 const composePath = path.join(directory, 'docker-compose.yml');
 const runtimePath = path.join(directory, configuration.runtimeFile);
@@ -59,8 +57,8 @@ async function deploy() {
             `${service}    env_file:\n      - .env.local\n`,
         );
     }
-    await writeFile(composePath, compose);
-    await writeFile(runtimePath, configuration.runtime, { mode: 0o600 });
+    await fs.writeFile(composePath, compose);
+    await fs.writeFile(runtimePath, configuration.runtime, { mode: 0o600 });
 
     if (!HOST)
         return console.log(
@@ -71,8 +69,8 @@ async function deploy() {
 
     const keyPath = path.join(directory, 'deploy-key');
 
-    await writeFile(keyPath, SSH_KEY, { mode: 0o600 });
-    await chmod(keyPath, 0o600);
+    await fs.writeFile(keyPath, SSH_KEY, { mode: 0o600 });
+    await fs.chmod(keyPath, 0o600);
 
     const sshOptions = [
         '-i',
@@ -93,5 +91,5 @@ async function deploy() {
 try {
     await deploy();
 } finally {
-    await rm(directory, { recursive: true, force: true });
+    await fs.rm(directory, { recursive: true, force: true });
 }

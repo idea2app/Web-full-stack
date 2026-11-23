@@ -1,9 +1,7 @@
 #! /usr/bin/env node
 
 import 'array-unique-proposal';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { $, argv, fs, path } from 'zx';
+import { $, argv, fs, os, path } from 'zx';
 import { parse, stringify } from 'yaml';
 
 import {
@@ -88,7 +86,7 @@ async function ensureTaskIssue(
         return true;
     }
 
-    const directory = await mkdtemp(path.join(tmpdir(), 'task-issue-'));
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'task-issue-'));
     try {
         const labels = [
             ...task.labels,
@@ -105,7 +103,7 @@ async function ensureTaskIssue(
                 : `\n\nDepends on task #${
                       context.plan.tasks[task.dependsOn].issue
                   }.`;
-        await writeFile(
+        await fs.writeFile(
             bodyPath,
             `${taskMarker(context.issueNumber, index)}\n\n${task.body}${dependsOn}`,
             'utf8',
@@ -128,7 +126,7 @@ async function ensureTaskIssue(
         );
         throw error;
     } finally {
-        await rm(directory, { recursive: true, force: true });
+        await fs.rm(directory, { recursive: true, force: true });
     }
 }
 

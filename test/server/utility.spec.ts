@@ -1,13 +1,18 @@
 import { strict as assert } from 'node:assert';
+import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
+import { parse } from 'yaml';
 
 import {
     documentDirectory,
+    formatRequirementDocument,
     isCompletedIssue,
     isValidRequirementTask,
     isValidStoredRequirementTask,
     parseRequirementScopes,
+    removeRootHiddenDirectories,
 } from '../../script/utility.ts';
 
 describe('issue documents', () => {
@@ -20,6 +25,48 @@ describe('issue documents', () => {
             documentDirectory('../../', '42'),
             join('documents', 'issue-42'),
         );
+    });
+
+    it('stores issue metadata in YAML front matter and preserves the body', () => {
+        const document = formatRequirementDocument(
+            {
+                issue: 42,
+                title: 'Example feature',
+                engine: 'Copilot',
+                scopes: ['server'],
+            },
+            '# Requirement\n\nBuild the feature.',
+        );
+        const [, frontMatter, body] =
+            document.match(/^---\n([\s\S]*?)\n---\n\n([\s\S]*)$/) ?? [];
+
+        assert.deepEqual(parse(frontMatter), {
+            issue: 42,
+            title: 'Example feature',
+            engine: 'Copilot',
+            scopes: ['server'],
+        });
+        assert.equal(body, '# Requirement\n\nBuild the feature.\n');
+    });
+});
+
+describe('scaffold directories', () => {
+    it('removes root hidden directories without removing visible directories', async () => {
+        const root = await mkdtemp(join(tmpdir(), 'scaffold-'));
+
+        try {
+            await mkdir(join(root, '.github', 'workflows'), {
+                recursive: true,
+            });
+            await mkdir(join(root, '.vscode'));
+            await mkdir(join(root, 'src'));
+
+            await removeRootHiddenDirectories(root);
+
+            assert.deepEqual(await readdir(root), ['src']);
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
     });
 });
 

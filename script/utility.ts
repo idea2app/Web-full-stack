@@ -1,4 +1,5 @@
-import { $, path } from 'zx';
+import { $, fs, path } from 'zx';
+import { stringify } from 'yaml';
 
 export function documentDirectory(title: string, issueNumber: string) {
     const slug = title
@@ -10,6 +11,26 @@ export function documentDirectory(title: string, issueNumber: string) {
         .replace(/[ ._-]+/g, '-')
         .slice(0, 100);
     return path.join('documents', `${slug || 'issue'}-${issueNumber}`);
+}
+
+export const formatRequirementDocument = (
+    metadata: Record<string, unknown>,
+    body: string,
+) => `---
+${stringify(metadata)}---
+
+${body.trim()}
+`;
+
+export async function removeRootHiddenDirectories(directory: string) {
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+
+    for (const entry of entries)
+        if (entry.isDirectory() && entry.name.startsWith('.'))
+            await fs.rm(path.join(directory, entry.name), {
+                recursive: true,
+                force: true,
+            });
 }
 
 export function isCompletedIssue(issue: {
