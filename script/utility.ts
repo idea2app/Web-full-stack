@@ -171,7 +171,7 @@ async function* runWithCredentials(
             .map(name => [name, process.env[name]]),
     );
     for (const name of savedCredentials.keys()) delete process.env[name];
-    for (const name of credentials[engine]) {
+    for (const name of new Set([...credentials[engine], 'GH_TOKEN'])) {
         const value = savedCredentials.get(name);
         if (value) process.env[name] = value;
     }
@@ -191,145 +191,95 @@ const promptWithFiles = (prompt: string, attachments: string[]) =>
         ...attachments.map(path => `Read the attachment at ${path}.`),
     ].join('\n\n');
 
-export const runCopilot = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
+export const runCopilot = (prompt: string, attachments: string[] = []) =>
     runWithCredentials('copilot', () => {
         const args = attachments.flatMap(path => ['--attachment', path]);
-        const permissions = allowChanges
-            ? [
-                  '--available-tools',
-                  'bash,edit,view,grep,glob',
-                  '--allow-tool',
-                  'read,write,shell',
-                  '--secret-env-vars',
-                  'GH_TOKEN,COPILOT_GITHUB_TOKEN',
-                  '--deny-tool',
-                  'shell(git commit)',
-                  '--deny-tool',
-                  'shell(git push)',
-                  '--deny-tool',
-                  'shell(gh)',
-              ]
-            : ['--available-tools', 'view,grep,glob', '--allow-tool', 'read'];
 
-        return $`pnpm dlx --package=@github/copilot@1.0.114 copilot --no-auto-update --no-custom-instructions --no-ask-user --disable-builtin-mcps ${permissions} --silent -p ${promptWithFiles(
+        return $`pnpm dlx --package=@github/copilot@1.0.114 copilot --no-auto-update --autopilot --allow-all --trust-folder --enable-all-github-mcp-tools --allow-all-mcp-server-instructions --secret-env-vars COPILOT_GITHUB_TOKEN --silent -p ${promptWithFiles(
             prompt,
             attachments,
         )} ${args}`;
     });
 
-export const runOpenAICodex = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
-    runWithCredentials('openai-codex', () => {
-        const sandbox = allowChanges ? 'workspace-write' : 'read-only';
-        const approval = allowChanges ? ['--approve-for-me'] : [];
+export const runOpenAICodex = (prompt: string, attachments: string[] = []) =>
+    runWithCredentials(
+        'openai-codex',
+        () =>
+            $`pnpm dlx --package=@openai/codex@0.171.0 codex exec --dangerously-bypass-approvals-and-sandbox ${promptWithFiles(
+                prompt,
+                attachments,
+            )}`,
+    );
 
-        return $`pnpm dlx --package=@openai/codex@0.171.0 codex exec --sandbox ${sandbox} ${approval} ${promptWithFiles(
-            prompt,
-            attachments,
-        )}`;
-    });
+export const runGeminiCLI = (prompt: string, attachments: string[] = []) =>
+    runWithCredentials(
+        'gemini-cli',
+        () =>
+            $`pnpm dlx --package=@google/gemini-cli@0.70.0 gemini --prompt ${promptWithFiles(
+                prompt,
+                attachments,
+            )} --output-format text --yolo`,
+    );
 
-export const runGeminiCLI = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
-    runWithCredentials('gemini-cli', () => {
-        const permissions = allowChanges
-            ? ['--yolo']
-            : ['--approval-mode', 'plan'];
+export const runClaudeCode = (prompt: string, attachments: string[] = []) =>
+    runWithCredentials(
+        'claude-code',
+        () =>
+            $`pnpm dlx --package=@anthropic-ai/claude-code@2.1.329 claude -p ${promptWithFiles(
+                prompt,
+                attachments,
+            )} --output-format text --permission-mode bypassPermissions --allow-dangerously-skip-permissions`,
+    );
 
-        return $`pnpm dlx --package=@google/gemini-cli@0.70.0 gemini --prompt ${promptWithFiles(
-            prompt,
-            attachments,
-        )} --output-format text ${permissions}`;
-    });
-
-export const runClaudeCode = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
-    runWithCredentials('claude-code', () => {
-        const permissions = allowChanges
-            ? [
-                  '--permission-mode',
-                  'bypassPermissions',
-                  '--allow-dangerously-skip-permissions',
-              ]
-            : ['--tools', 'Read', '--permission-mode', 'plan'];
-
-        return $`pnpm dlx --package=@anthropic-ai/claude-code@2.1.329 claude -p ${promptWithFiles(
-            prompt,
-            attachments,
-        )} --output-format text ${permissions}`;
-    });
-
-export const runQoderCLI = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
-    runWithCredentials('qoder-cli', () => {
-        const permissions = allowChanges ? ['--yolo'] : [];
-        return $`pnpm dlx --package=@qoder-ai/qodercli@1.1.95 qoder -p ${promptWithFiles(
-            prompt,
-            attachments,
-        )} --output-format text ${permissions}`;
-    });
+export const runQoderCLI = (prompt: string, attachments: string[] = []) =>
+    runWithCredentials(
+        'qoder-cli',
+        () =>
+            $`pnpm dlx --package=@qoder-ai/qodercli@1.1.95 qoder -p ${promptWithFiles(
+                prompt,
+                attachments,
+            )} --output-format text --dangerously-skip-permissions`,
+    );
 
 export const runKimiCLI = (prompt: string, attachments: string[] = []) =>
     runWithCredentials(
         'kimi-cli',
         () =>
-            $`kimi --print -p ${promptWithFiles(
+            $`kimi --print --afk -p ${promptWithFiles(
                 prompt,
                 attachments,
             )} --final-message-only`,
     );
 
-export const runKiloCLI = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
+export const runKiloCLI = (prompt: string, attachments: string[] = []) =>
     runWithCredentials('kilo-cli', () => {
         const files = attachments.flatMap(path => ['--file', path]);
-        const permissions = allowChanges ? ['--auto'] : [];
 
         return $`pnpm dlx --package=@kilocode/cli@7.8.32 kilo run ${promptWithFiles(
             prompt,
             attachments,
-        )} ${permissions} ${files}`;
+        )} --auto ${files}`;
     });
 
 export function runAI(
     engine: AIEngine,
     prompt: string,
     attachments: string[] = [],
-    allowChanges = false,
 ): AsyncGenerator<string> {
     switch (engine) {
         case 'copilot':
-            return runCopilot(prompt, attachments, allowChanges);
+            return runCopilot(prompt, attachments);
         case 'openai-codex':
-            return runOpenAICodex(prompt, attachments, allowChanges);
+            return runOpenAICodex(prompt, attachments);
         case 'gemini-cli':
-            return runGeminiCLI(prompt, attachments, allowChanges);
+            return runGeminiCLI(prompt, attachments);
         case 'claude-code':
-            return runClaudeCode(prompt, attachments, allowChanges);
+            return runClaudeCode(prompt, attachments);
         case 'qoder-cli':
-            return runQoderCLI(prompt, attachments, allowChanges);
+            return runQoderCLI(prompt, attachments);
         case 'kimi-cli':
             return runKimiCLI(prompt, attachments);
         case 'kilo-cli':
-            return runKiloCLI(prompt, attachments, allowChanges);
+            return runKiloCLI(prompt, attachments);
     }
 }

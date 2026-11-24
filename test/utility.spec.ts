@@ -304,6 +304,22 @@ describe('issue agent labels', () => {
     });
 });
 
+describe('AI CLI execution', () => {
+    it('enables automatic execution and preserves credential isolation', () => {
+        const result = spawnSync(
+            process.execPath,
+            [
+                '--experimental-test-module-mocks',
+                '--import',
+                '@swc-node/register/esm-register',
+                join('test', 'ai-cli-fixture.mjs'),
+            ],
+            { encoding: 'utf8' },
+        );
+        assert.equal(result.status, 0, result.stderr || result.stdout);
+    });
+});
+
 describe('requirement tasks', () => {
     const task = {
         title: 'Implement feature',
