@@ -15,6 +15,7 @@ permissions:
     actions: write
     contents: write
     issues: write
+    pull-requests: write
 
 concurrency:
     group: requirement-tasks
@@ -45,7 +46,7 @@ jobs:
                   pnpm exec zx script/process-tasks.ts
                   --default-branch "$DEFAULT_BRANCH"
               env:
-                  GH_TOKEN: ${{ github.token }}
+                  GH_TOKEN: ${{ secrets.GH_TOKEN }}
                   DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
             - name: Commit task issue URLs to the default branch
