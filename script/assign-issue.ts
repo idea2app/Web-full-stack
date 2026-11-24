@@ -2,7 +2,8 @@
 
 import { $, argv } from 'zx';
 
-import { isCompletedIssue, type AIEngine } from './utility.ts';
+import { routeIssueIfReady } from './utility.ts';
+import { parseIssueReferences } from './schema.ts';
 
 $.verbose = true;
 
@@ -17,65 +18,15 @@ if (
 )
     throw new Error('Issue number, action, and default branch are required.');
 
-const engineByLabel: Record<string, AIEngine> = {
-    'agent-openai-codex': 'openai-codex',
-    'agent-gemini-cli': 'gemini-cli',
-    'agent-claude-code': 'claude-code',
-    'agent-qoder-cli': 'qoder-cli',
-    'agent-kimi-cli': 'kimi-cli',
-    'agent-kilo-cli': 'kilo-cli',
-};
+if (action !== 'closed') await routeIssueIfReady(issueNumber, defaultBranch);
+else {
+    const { stdout } = await $`gh issue view ${issueNumber} --json blocking`;
+    const candidates = parseIssueReferences(stdout, 'blocking');
 
-async function routeIssue(number: number | string, labels: { name: string }[]) {
-    if (labels.some(({ name }) => name === 'documentation')) return;
-
-    const engine =
-        labels.map(({ name }) => engineByLabel[name]).find(Boolean) ??
-        'copilot';
-
-    if (engine === 'copilot') {
-        await $`gh issue edit ${number} --add-assignee @copilot`;
-    } else {
-        await $`gh workflow run implement-issue.yml --ref ${defaultBranch} -f ${`issue_number=${number}`}`;
-    }
-}
-
-if (action !== 'closed') {
-    const { stdout } =
-        await $`gh issue view ${issueNumber} --json labels,parent`;
-    const issue = JSON.parse(stdout);
-    if (
-        issue.labels.some(
-            ({ name }: { name: string }) => name === 'documentation',
-        )
-    )
-        process.exit(0);
-
-    if (issue.parent) {
-        const { stdout: parent } =
-            await $`gh issue view ${issue.parent.number} --json state,stateReason`;
-        const parentIssue = JSON.parse(parent);
-
-        if (!isCompletedIssue(parentIssue)) {
-            console.log(
-                `Parent issue #${issue.parent.number} is not completed; assignment is deferred.`,
-            );
-            process.exit(0);
-        }
-    }
-    await routeIssue(issueNumber, issue.labels);
-} else {
-    const { stdout } = await $`gh issue view ${issueNumber} --json subIssues`;
-    const { subIssues } = JSON.parse(stdout);
-
-    for (const { number } of subIssues.filter(
-        ({ state }: { state: string }) => state === 'OPEN',
-    )) {
-        const { stdout: result } =
-            await $`gh issue view ${number} --json labels`;
-        await routeIssue(
-            number,
-            JSON.parse(result).labels as { name: string }[],
-        );
-    }
+    for (const url of new Set(
+        candidates
+            .filter(({ state }) => state === 'OPEN')
+            .map(({ url }) => url),
+    ))
+        await routeIssueIfReady(url, defaultBranch);
 }

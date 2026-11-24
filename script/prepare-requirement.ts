@@ -10,13 +10,15 @@ import {
     documentDirectory,
     formatRequirementDocument,
     isAllowedAttachment,
+    runAI,
+} from './utility.ts';
+import {
     isValidRequirementInput,
     parseRequirementOutputLine,
     parseRequirementScopes,
-    runAI,
     type AIEngine,
     type RequirementPlan,
-} from './utility.ts';
+} from './schema.ts';
 
 $.verbose = true;
 
@@ -97,16 +99,10 @@ if (urls.length && !attachmentText.trim())
 const content = formatRequirementDocument(
     {
         ...fields,
-        issue: Number(issueNumber),
+        issue: issueUrl,
         title: issueTitle,
-        url: issueUrl,
     },
-    [
-        issueBody.trim(),
-        ...(attachmentText.trim()
-            ? [`## Attachment text\n\n${attachmentText.trim()}`]
-            : []),
-    ].join('\n\n'),
+    attachmentText,
 );
 const contentPath = path.join(directory, 'content.md');
 await fs.outputFile(contentPath, `${content.trimEnd()}\n`, 'utf8');
@@ -126,13 +122,22 @@ const prompt = `## Task
     - State the value they expect.
     - Give acceptance criteria that follow the relevant workflow.
 - Complete the user story first, then derive the technical work needed to deliver it end to end.
+- Keep each task's expected code change focused and cohesive, limited to the behavior and layers directly needed.
+- Prefer existing repository APIs, types, models, components, and conventions over parallel implementations.
+- Keep each issue to one primary user action or state transition, plus the direct read behavior and tests needed to use it.
+- Each issue must have one initiating action or command. Include its directly necessary reads, notifications, validation, and side effects, but split actions that users can initiate or approve independently.
+- Split independent mutations, record types, and separately initiated actions by different actors into separate tasks even when they share a page, entity, project, or broader journey; connect them with dependencies only when required.
+- If a task title or acceptance criteria lists multiple independently submitted artifacts or actions, split them unless the requirement explicitly makes them one atomic operation. When independence is unclear, prefer separate tasks over bundling.
+- Keep independently usable read journeys separate, even when they use the same public access or presentation layer.
+- A task may cross layers to deliver that one action, but must not bundle multiple independently reviewable results into a broad end-to-end journey.
+- Split a task when it bundles multiple independently testable behaviors or unrelated client flows; do not split solely by technical layer when that would leave one behavior incomplete.
 - Format every task body with these exact headings, in this order:
     - \`### User case\` (required): user story and acceptance criteria.
     - \`### Backend development content\`: APIs, business logic, data changes, and tests.
     - \`### Frontend development content\`: relevant browser pages and interactions.
     - \`### Mobile development content\`: relevant mobile pages and interactions.
-- Write \`Not applicable.\` under a development heading when that layer is not part of the task.
-- Include AI skill package work in the most relevant development section when the requirement calls for it.
+    - \`### Skill development content\`: relevant AI skill package operations and interactions.
+- Write the equivalent of \`Not applicable.\` in the requirement's language under a development heading when that layer is not part of the task.
 - Cover the requirement-relevant layers and clients:
     - Backend APIs and unit tests.
     - Browser front-office, middle-office, and back-office pages.
@@ -140,11 +145,14 @@ const prompt = `## Task
     - AI skill packages, when required by the workflow.
 - Use Markdown lists, tables, and Mermaid diagrams to clarify the business flow and acceptance criteria when helpful.
 - Do not invent unrequested products, roles, clients, or features.
+- Make acceptance criteria observable and testable, covering relevant actors, preconditions, permissions, success and failure cases, persisted state, and side effects.
+- When a task depends on earlier tasks, include a concise \`Prerequisite context:\` paragraph in its body with only the decisions, contracts, data shapes, and completed behavior needed to implement this task. Do not only refer to prerequisite issue titles or numbers, and do not copy their entire descriptions. Omit this paragraph when there are no dependencies.
+- For REST and MCP work, describe only the inputs, outputs, errors, and authorization needed to verify the requirement, following repository conventions when available. Do not invent providers, contracts, or product behavior; make unresolved assumptions explicit for human review.
+- Distinguish requirement-backed acceptance criteria from implementation assumptions. Do not present inferred providers, schemas, statuses, metrics, or policies as requirements; make necessary but unspecified choices explicit for human review.
 
 ## Task size and dependencies
 
 - Make each task the smallest independently implementable and reviewable end-to-end business loop.
-- Size each task for about one person-day, keeping its change set small and easy to review.
 - Split distinct business journeys into separate tasks.
 - Include only layers and clients relevant to each journey.
 - Add dependencies only for genuine prerequisites, and order dependent tasks explicitly.
@@ -153,7 +161,7 @@ const prompt = `## Task
 
 - The selected development scopes are multi-select.
 - Use only the selected scopes provided below.
-- Label each task with every selected scope it affects.
+- Label each task only with the selected scopes it actually affects.
 - Use multiple labels when a task's end-to-end slice crosses scopes.
 - Across the plan, cover all selected scopes that apply to the requirement.
 
@@ -169,7 +177,7 @@ const prompt = `## Task
 - Emit one task record for each task:
     - \`type\` must be \`task\`.
     - Include \`title\`, \`body\`, \`labels\`, and \`dependsOn\`.
-    - Example: \`{"type":"task","title":"...","body":"...","labels":["server"],"dependsOn":null}\`
+    - Example: \`{"type":"task","title":"...","body":"...","labels":["server"],"dependsOn":[]}\`
 - After all task records, emit exactly one completion record:
     - \`type\` must be \`complete\`.
     - \`taskCount\` must equal the number of task records emitted.
@@ -178,7 +186,8 @@ const prompt = `## Task
 - Each task must have one or more labels chosen only from ${JSON.stringify(
     scopes,
 )}.
-- \`dependsOn\` must be \`null\` or the zero-based index of an earlier task.
+- Count task indices from 0: the first emitted task has index 0, and a task at index \`n\` may depend only on indices 0 through \`n - 1\`. Do not use one-based task numbers. List all genuine prerequisite indices in \`dependsOn\`, without duplicates; use an empty array when there are none.
+- Before emitting, check every task: split it if its title or acceptance criteria contain separately initiated actions or independently reviewable record types. For each dependency, verify the referenced task title actually supplies the stated prerequisite. Ensure every task index mentioned in its prerequisite context is in \`dependsOn\`, and every dependency has matching prerequisite context; include no unrelated dependencies.
 - Include every distinct, relevant business journey; do not impose an arbitrary task-count limit.
 - Write titles and descriptions in the same natural language as the original requirement.
 - Keep JSON keys, labels, and technical names unchanged.

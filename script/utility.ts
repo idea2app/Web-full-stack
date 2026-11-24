@@ -1,11 +1,13 @@
 import { $, fs, path, type ProcessPromise } from 'zx';
 import { stringify } from 'yaml';
 
-export const isPositiveInteger = (value: unknown): value is number =>
-    Number.isInteger(value) && (value as number) > 0;
-
-export const isObject = (value: unknown): value is Record<string, unknown> =>
-    !!value && typeof value === 'object' && !Array.isArray(value);
+import {
+    isAIEngine,
+    parseIssueReferences,
+    parseRequirementScopes,
+    type AIEngine,
+    type StoredRequirementTask,
+} from './schema.ts';
 
 export function documentDirectory(title: string, issueNumber: string) {
     const slug = title
@@ -19,14 +21,38 @@ export function documentDirectory(title: string, issueNumber: string) {
     return path.join('documents', `${slug || 'issue'}-${issueNumber}`);
 }
 
-export const formatRequirementDocument = (
-    metadata: Record<string, unknown>,
-    body: string,
-) => `---
+export function formatRequirementDocument(
+    fields: Record<string, unknown> & { title: string },
+    attachmentText = '',
+) {
+    const { requirement, ...metadata } = fields;
+
+    if (typeof requirement !== 'string' || !requirement.trim())
+        throw new Error('The requirement details must not be empty.');
+
+    metadata.scopes = parseRequirementScopes(fields.scopes);
+
+    const body = requirement
+        .trim()
+        .replace(
+            /^```(?:markdown|md)[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*$/i,
+            '$1',
+        );
+    const content = [
+        body,
+        ...(attachmentText.trim()
+            ? [`## Attachment text\n\n${attachmentText.trim()}`]
+            : []),
+    ].join('\n\n');
+
+    return `---
 ${stringify(metadata)}---
 
-${body.trim()}
+# ${fields.title}
+
+${content}
 `;
+}
 
 export async function removeRootHiddenDirectories(directory: string) {
     const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -46,63 +72,60 @@ export function isCompletedIssue(issue: {
     return issue.state === 'CLOSED' && issue.stateReason === 'COMPLETED';
 }
 
-export function parseRequirementScopes(value: unknown): string[] {
-    const values: unknown[] = Array.isArray(value) ? value : [value];
+export async function routeIssueIfReady(
+    issueNumber: number | string,
+    defaultBranch: string,
+): Promise<boolean> {
+    const { stdout } =
+        await $`gh issue view ${issueNumber} --json state,labels,blockedBy,url`;
+    const issue = JSON.parse(stdout);
 
-    if (!values.every((item): item is string => typeof item === 'string'))
-        throw new Error('Select one or more valid development scopes.');
+    if (
+        issue.state !== 'OPEN' ||
+        issue.labels.some(
+            ({ name }: { name: string }) => name === 'documentation',
+        )
+    )
+        return false;
 
-    const scopes = values
-        .flatMap(item => item.split(','))
-        .map(scope => scope.trim());
-    const allowedScopes = new Set(['server', 'browser', 'mobile']);
+    for (const { url: prerequisite } of parseIssueReferences(
+        stdout,
+        'blockedBy',
+    )) {
+        const { stdout: result } =
+            await $`gh issue view ${prerequisite} --json state,stateReason`;
 
-    if (!scopes.length || scopes.some(scope => !allowedScopes.has(scope)))
-        throw new Error('Select one or more valid development scopes.');
+        if (!isCompletedIssue(JSON.parse(result))) {
+            console.log(
+                `Issue ${issue.url} is waiting for completed prerequisite ${prerequisite}.`,
+            );
+            return false;
+        }
+    }
+    if (!findIssueAgent(issue.labels.map(({ name }: { name: string }) => name)))
+        try {
+            await $`gh issue edit ${issue.url} --add-assignee @copilot`;
+            return true;
+        } catch (error) {
+            console.warn(
+                `Could not assign ${issue.url} to @copilot; falling back to the selected AI CLI.`,
+                error,
+            );
+        }
+    const url = new URL(issue.url);
+    const repository = `${url.host}/${url.pathname.split('/').slice(1, 3).join('/')}`;
+    const number = url.pathname.split('/').pop();
 
-    return scopes;
+    await $`gh workflow run implement-issue.yml --repo ${repository} --ref ${defaultBranch} -f ${`issue_number=${number}`}`;
+    return true;
 }
 
-export interface RequirementTask {
-    title: string;
-    body: string;
-    labels: string[];
-    dependsOn: number | null;
-}
-
-export interface StoredRequirementTask extends RequirementTask {
-    issue: number | null;
-    url?: string | null;
-    delegated?: boolean;
-}
-
-export interface RequirementPlan {
-    issue: number;
-    url?: string;
-    title?: string;
-    engine: AIEngine;
-    scopes: string[];
-    status: 'processing' | 'incomplete' | 'pending' | 'completed';
-    tasks: StoredRequirementTask[];
-}
-
-export interface RequirementInput {
-    issueNumber: string;
-    issueUrl: string;
-    issueTitle: string;
-    issueBody: string;
-}
-
-export const isValidRequirementInput = ({
-    issueNumber,
-    issueUrl,
-    issueTitle,
-    issueBody,
-}: RequirementInput) =>
-    !!issueNumber &&
-    URL.parse(issueUrl)?.protocol === 'https:' &&
-    !!issueTitle &&
-    !!issueBody;
+export const taskDependencies = (task: StoredRequirementTask): number[] =>
+    Array.isArray(task.dependsOn)
+        ? task.dependsOn
+        : task.dependsOn === null
+          ? []
+          : [task.dependsOn];
 
 export function isAllowedAttachment(rawUrl: string): boolean {
     const url = URL.parse(rawUrl);
@@ -117,79 +140,6 @@ export function isAllowedAttachment(rawUrl: string): boolean {
     );
 }
 
-export const isValidRequirementTask = (
-    task: unknown,
-    index: number,
-    scopes: readonly string[],
-): task is RequirementTask =>
-    isObject(task) &&
-    typeof task.title === 'string' &&
-    !!task.title.trim() &&
-    task.title.length <= 200 &&
-    typeof task.body === 'string' &&
-    !!task.body.trim() &&
-    task.body.length <= 30_000 &&
-    Array.isArray(task.labels) &&
-    task.labels.length > 0 &&
-    task.labels.every(
-        (label: unknown) => typeof label === 'string' && scopes.includes(label),
-    ) &&
-    (task.dependsOn === null ||
-        (Number.isInteger(task.dependsOn) &&
-            (task.dependsOn as number) >= 0 &&
-            (task.dependsOn as number) < index));
-
-export const isValidStoredRequirementTask = (
-    task: unknown,
-    index: number,
-    scopes: readonly string[],
-): task is StoredRequirementTask =>
-    isObject(task) &&
-    isValidRequirementTask(task, index, scopes) &&
-    (task.issue === null || isPositiveInteger(task.issue)) &&
-    (task.url === undefined ||
-        task.url === null ||
-        (typeof task.url === 'string' && URL.canParse(task.url))) &&
-    (task.delegated === undefined || typeof task.delegated === 'boolean') &&
-    (task.delegated !== true || isPositiveInteger(task.issue));
-
-export type RequirementOutputRecord =
-    | { type: 'task'; task: RequirementTask }
-    | { type: 'complete'; taskCount: number };
-
-export function parseRequirementOutputLine(
-    line: string,
-    index: number,
-    scopes: readonly string[],
-): RequirementOutputRecord {
-    const record: unknown = JSON.parse(line);
-
-    if (!isObject(record))
-        throw new Error('Task output must be a JSON object.');
-    if (
-        record.type === 'complete' &&
-        Number.isInteger(record.taskCount) &&
-        (record.taskCount as number) >= 0
-    )
-        return { type: 'complete', taskCount: record.taskCount as number };
-
-    const { type, ...task } = record;
-
-    if (type !== 'task' || !isValidRequirementTask(task, index, scopes))
-        throw new Error('The generated task record is invalid.');
-
-    return { type, task };
-}
-
-export type AIEngine =
-    | 'copilot'
-    | 'openai-codex'
-    | 'gemini-cli'
-    | 'claude-code'
-    | 'qoder-cli'
-    | 'kimi-cli'
-    | 'kilo-cli';
-
 const credentials: Record<AIEngine, string[]> = {
     copilot: ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN'],
     'openai-codex': ['OPENAI_API_KEY'],
@@ -199,6 +149,17 @@ const credentials: Record<AIEngine, string[]> = {
     'kimi-cli': ['MOONSHOT_API_KEY'],
     'kilo-cli': ['KILO_CONFIG_CONTENT'],
 };
+
+export const findIssueAgent = (
+    labels: readonly string[],
+): Exclude<AIEngine, 'copilot'> | undefined =>
+    labels
+        .filter(label => label.startsWith('agent-'))
+        .map(label => label.slice('agent-'.length))
+        .find(
+            (engine): engine is Exclude<AIEngine, 'copilot'> =>
+                engine !== 'copilot' && isAIEngine(engine),
+        );
 
 async function* runWithCredentials(
     engine: AIEngine,
@@ -210,7 +171,7 @@ async function* runWithCredentials(
             .map(name => [name, process.env[name]]),
     );
     for (const name of savedCredentials.keys()) delete process.env[name];
-    for (const name of credentials[engine]) {
+    for (const name of new Set([...credentials[engine], 'GH_TOKEN'])) {
         const value = savedCredentials.get(name);
         if (value) process.env[name] = value;
     }
@@ -234,121 +195,91 @@ export const runCopilot = (prompt: string, attachments: string[] = []) =>
     runWithCredentials('copilot', () => {
         const args = attachments.flatMap(path => ['--attachment', path]);
 
-        return $`pnpm dlx --package=@github/copilot@1.0.114 copilot --no-auto-update --no-custom-instructions --no-ask-user --disable-builtin-mcps --available-tools read --allow-tool read --silent -p ${promptWithFiles(
+        return $`pnpm dlx --package=@github/copilot@1.0.114 copilot --no-auto-update --autopilot --allow-all --trust-folder --enable-all-github-mcp-tools --allow-all-mcp-server-instructions --secret-env-vars COPILOT_GITHUB_TOKEN --silent -p ${promptWithFiles(
             prompt,
             attachments,
         )} ${args}`;
     });
 
-export const runOpenAICodex = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
-    runWithCredentials('openai-codex', () => {
-        const sandbox = allowChanges ? 'workspace-write' : 'read-only';
-        const approval = allowChanges ? ['--approve-for-me'] : [];
+export const runOpenAICodex = (prompt: string, attachments: string[] = []) =>
+    runWithCredentials(
+        'openai-codex',
+        () =>
+            $`pnpm dlx --package=@openai/codex@0.171.0 codex exec --dangerously-bypass-approvals-and-sandbox ${promptWithFiles(
+                prompt,
+                attachments,
+            )}`,
+    );
 
-        return $`pnpm dlx --package=@openai/codex@0.171.0 codex exec --sandbox ${sandbox} ${approval} ${promptWithFiles(
-            prompt,
-            attachments,
-        )}`;
-    });
+export const runGeminiCLI = (prompt: string, attachments: string[] = []) =>
+    runWithCredentials(
+        'gemini-cli',
+        () =>
+            $`pnpm dlx --package=@google/gemini-cli@0.70.0 gemini --prompt ${promptWithFiles(
+                prompt,
+                attachments,
+            )} --output-format text --yolo`,
+    );
 
-export const runGeminiCLI = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
-    runWithCredentials('gemini-cli', () => {
-        const permissions = allowChanges
-            ? ['--yolo']
-            : ['--approval-mode', 'plan'];
+export const runClaudeCode = (prompt: string, attachments: string[] = []) =>
+    runWithCredentials(
+        'claude-code',
+        () =>
+            $`pnpm dlx --package=@anthropic-ai/claude-code@2.1.329 claude -p ${promptWithFiles(
+                prompt,
+                attachments,
+            )} --output-format text --permission-mode bypassPermissions --allow-dangerously-skip-permissions`,
+    );
 
-        return $`pnpm dlx --package=@google/gemini-cli@0.70.0 gemini --prompt ${promptWithFiles(
-            prompt,
-            attachments,
-        )} --output-format text ${permissions}`;
-    });
-
-export const runClaudeCode = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
-    runWithCredentials('claude-code', () => {
-        const permissions = allowChanges
-            ? [
-                  '--permission-mode',
-                  'bypassPermissions',
-                  '--allow-dangerously-skip-permissions',
-              ]
-            : ['--tools', 'Read', '--permission-mode', 'plan'];
-
-        return $`pnpm dlx --package=@anthropic-ai/claude-code@2.1.329 claude -p ${promptWithFiles(
-            prompt,
-            attachments,
-        )} --output-format text ${permissions}`;
-    });
-
-export const runQoderCLI = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
-    runWithCredentials('qoder-cli', () => {
-        const permissions = allowChanges ? ['--yolo'] : [];
-        return $`pnpm dlx --package=@qoder-ai/qodercli@1.1.95 qoder -p ${promptWithFiles(
-            prompt,
-            attachments,
-        )} --output-format text ${permissions}`;
-    });
+export const runQoderCLI = (prompt: string, attachments: string[] = []) =>
+    runWithCredentials(
+        'qoder-cli',
+        () =>
+            $`pnpm dlx --package=@qoder-ai/qodercli@1.1.95 qoder -p ${promptWithFiles(
+                prompt,
+                attachments,
+            )} --output-format text --dangerously-skip-permissions`,
+    );
 
 export const runKimiCLI = (prompt: string, attachments: string[] = []) =>
     runWithCredentials(
         'kimi-cli',
         () =>
-            $`kimi --print -p ${promptWithFiles(
+            $`kimi --print --afk -p ${promptWithFiles(
                 prompt,
                 attachments,
             )} --final-message-only`,
     );
 
-export const runKiloCLI = (
-    prompt: string,
-    attachments: string[] = [],
-    allowChanges = false,
-) =>
+export const runKiloCLI = (prompt: string, attachments: string[] = []) =>
     runWithCredentials('kilo-cli', () => {
         const files = attachments.flatMap(path => ['--file', path]);
-        const permissions = allowChanges ? ['--auto'] : [];
 
         return $`pnpm dlx --package=@kilocode/cli@7.8.32 kilo run ${promptWithFiles(
             prompt,
             attachments,
-        )} ${permissions} ${files}`;
+        )} --auto ${files}`;
     });
 
 export function runAI(
     engine: AIEngine,
     prompt: string,
     attachments: string[] = [],
-    allowChanges = false,
 ): AsyncGenerator<string> {
     switch (engine) {
         case 'copilot':
             return runCopilot(prompt, attachments);
         case 'openai-codex':
-            return runOpenAICodex(prompt, attachments, allowChanges);
+            return runOpenAICodex(prompt, attachments);
         case 'gemini-cli':
-            return runGeminiCLI(prompt, attachments, allowChanges);
+            return runGeminiCLI(prompt, attachments);
         case 'claude-code':
-            return runClaudeCode(prompt, attachments, allowChanges);
+            return runClaudeCode(prompt, attachments);
         case 'qoder-cli':
-            return runQoderCLI(prompt, attachments, allowChanges);
+            return runQoderCLI(prompt, attachments);
         case 'kimi-cli':
             return runKimiCLI(prompt, attachments);
         case 'kilo-cli':
-            return runKiloCLI(prompt, attachments, allowChanges);
+            return runKiloCLI(prompt, attachments);
     }
 }

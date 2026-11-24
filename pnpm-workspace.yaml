@@ -6,3 +6,4 @@ packages:
 autoInstallPeers: false
 allowBuilds:
     '@swc/core': true
+    core-js: true

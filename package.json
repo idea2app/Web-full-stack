@@ -1,6 +1,6 @@
 {
     "name": "@idea2app/web-full-stack",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "author": "shiy2008@gmail.com",
     "private": true,
     "type": "module",
@@ -11,6 +11,7 @@
     "dependencies": {
         "array-unique-proposal": "^0.3.4",
         "yaml": "^2.9.1",
+        "zod": "^4.6.7",
         "zx": "^8.8.5"
     },
     "devDependencies": {
@@ -20,7 +21,7 @@
         "expect": "^30.5.2",
         "husky": "^9.1.7",
         "jest-mock": "^30.5.2",
-        "lint-staged": "^17.6.1",
+        "lint-staged": "^17.6.2",
         "playwright": "^1.65.1",
         "prettier": "^3.10.1",
         "typescript": "~6.0.3"
@@ -38,8 +39,6 @@
         "prepare": "husky",
         "pretest": "playwright install chromium",
         "lint": "lint-staged",
-        "test-server": "node --import @swc-node/register/esm-register --test test/server/*.spec.ts",
-        "test-browser": "node --import @swc-node/register/esm-register --test test/browser/*.spec.ts",
-        "test": "pnpm lint && pnpm test-server && pnpm test-browser"
+        "test": "npm run lint  &&  node --import @swc-node/register/esm-register --test test/**/*.spec.ts"
     }
 }
