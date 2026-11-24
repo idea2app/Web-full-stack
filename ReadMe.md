@@ -34,13 +34,12 @@ flowchart LR
 ### Requirement and issue lifecycle
 
 1. A new or reopened `documentation` issue selects one or more scopes and an AI agent.
-2. One workflow job converts attachments to Markdown, stores `documents/{issue-title}-{issue-number}/content.md`, analyzes the requirement, and stores ordered tasks in the adjacent `tasks.yml`.
-3. The same job initializes and localizes selected scaffold submodules, removes their nested pnpm lockfiles, runs `pnpm -r i --no-frozen-lockfile` from the repository root, and opens one review PR containing the documents and code changes. Workspace installs allow the root lockfile to change because unlocalized submodules may be absent.
-4. Closing the documentation issue as completed creates each task as a child issue, labels it with the selected scope and agent, and records the child number in `tasks.yml`.
-5. A new or reopened non-documentation issue is delegated to Copilot or the selected coding CLI when its non-documentation parent is completed, or when it has no parent. An open documentation parent does not block delegation, but any parent closed without completion does. Completing an issue starts its eligible open children.
-6. Non-Copilot implementations are proposed in pull requests whose descriptions close the corresponding issues.
-
-The issue-creation workflow listens both for issues closed as completed and for changes to `documents/**/tasks.yml`. It checks that each requirement is completed in either case, so requirements closed as not planned or duplicate are skipped, regardless of whether the review PR merges before or after closure.
+2. One workflow job converts attachments to Markdown, stores `documents/{issue-title}-{issue-number}/content.md` with issue metadata and the requirement form's Markdown body, and streams end-to-end user-story tasks into the adjacent `tasks.yml`. Task descriptions cover the applicable backend, browser, mobile, and AI skill work.
+3. The same job initializes and localizes selected scaffold submodules, removes their nested pnpm lockfiles and root hidden directories, runs `pnpm -r i --no-frozen-lockfile` from the repository root, and opens one review PR containing the documents and code changes. A complete plan closes the requirement when merged; an incomplete plan is preserved for review and must be completed and set to `pending` before closing. Workspace installs allow the root lockfile to change because unlocalized submodules may be absent.
+4. Closing the documentation issue as completed creates each task as a child issue, labels it with the selected scope and agent, records the child number in `tasks.yml`, and links prerequisite tasks using GitHub's `blocked by` relationships. `dependsOn` holds an array of earlier task indices; older single-index and null values remain supported.
+5. A new or reopened non-documentation issue is delegated to Copilot or the selected coding CLI only when all blocking issues are completed. The parent-child relationship organizes tasks under the documentation issue and does not itself block delegation. Completing an issue rechecks the open issues it blocks.
+6. Non-Copilot implementations are proposed in pull requests referencing the corresponding issues.
+   The issue-creation workflow listens both for issues closed as completed and for changes to `documents/**/tasks.yml`. It checks that each requirement is completed in either case, so requirements closed as not planned or duplicate are skipped, regardless of whether the review PR merges before or after closure.
 
 ### GitHub tokens
 

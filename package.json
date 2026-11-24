@@ -1,6 +1,6 @@
 {
     "name": "@idea2app/web-full-stack",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "author": "shiy2008@gmail.com",
     "private": true,
     "type": "module",
@@ -21,7 +21,7 @@
         "expect": "^30.5.2",
         "husky": "^9.1.7",
         "jest-mock": "^30.5.2",
-        "lint-staged": "^17.6.1",
+        "lint-staged": "^17.6.2",
         "playwright": "^1.65.1",
         "prettier": "^3.10.1",
         "typescript": "~6.0.3"
