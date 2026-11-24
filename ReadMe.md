@@ -53,7 +53,7 @@ Configure the provider secret for each non-Copilot agent used by the issue form:
 | Kilo CLI     | `KILO_CONFIG_CONTENT`         | JSON config with model and provider credentials; see [Kilo CLI docs][6] |
 | Qoder CLI    | `QODER_PERSONAL_ACCESS_TOKEN` |                                                                         |
 
-Copilot uses the workflow token unless `COPILOT_GITHUB_TOKEN` is configured. For an organization-owned repository, the organization must enable **Allow use of Copilot CLI billed to the organization**. A configured `COPILOT_GITHUB_TOKEN` must be a fine-grained personal access token with the **Copilot Requests** account permission.
+Copilot CLI uses the workflow token unless `COPILOT_GITHUB_TOKEN` is configured; this token is used only by Copilot CLI. GitHub CLI commands use the CI `GITHUB_TOKEN`. For an organization-owned repository, the organization must enable **Allow use of Copilot CLI billed to the organization**. A configured `COPILOT_GITHUB_TOKEN` must be a fine-grained personal access token with the **Copilot Requests** account permission.
 
 ## 🧪 Development and tests
 

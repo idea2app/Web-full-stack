@@ -102,18 +102,21 @@ export async function routeIssueIfReady(
             return false;
         }
     }
-    const engine = findIssueAgent(
-        issue.labels.map(({ name }: { name: string }) => name),
-    );
+    if (!findIssueAgent(issue.labels.map(({ name }: { name: string }) => name)))
+        try {
+            await $`gh issue edit ${issue.url} --add-assignee @copilot`;
+            return true;
+        } catch (error) {
+            console.warn(
+                `Could not assign ${issue.url} to @copilot; falling back to the selected AI CLI.`,
+                error,
+            );
+        }
+    const url = new URL(issue.url);
+    const repository = `${url.host}/${url.pathname.split('/').slice(1, 3).join('/')}`;
+    const number = url.pathname.split('/').pop();
 
-    if (!engine) await $`gh issue edit ${issue.url} --add-assignee @copilot`;
-    else {
-        const url = new URL(issue.url);
-        const repository = `${url.host}/${url.pathname.split('/').slice(1, 3).join('/')}`;
-        const number = url.pathname.split('/').pop();
-
-        await $`gh workflow run implement-issue.yml --repo ${repository} --ref ${defaultBranch} -f ${`issue_number=${number}`}`;
-    }
+    await $`gh workflow run implement-issue.yml --repo ${repository} --ref ${defaultBranch} -f ${`issue_number=${number}`}`;
     return true;
 }
 
@@ -188,11 +191,31 @@ const promptWithFiles = (prompt: string, attachments: string[]) =>
         ...attachments.map(path => `Read the attachment at ${path}.`),
     ].join('\n\n');
 
-export const runCopilot = (prompt: string, attachments: string[] = []) =>
+export const runCopilot = (
+    prompt: string,
+    attachments: string[] = [],
+    allowChanges = false,
+) =>
     runWithCredentials('copilot', () => {
         const args = attachments.flatMap(path => ['--attachment', path]);
+        const permissions = allowChanges
+            ? [
+                  '--available-tools',
+                  'bash,edit,view,grep,glob',
+                  '--allow-tool',
+                  'read,write,shell',
+                  '--secret-env-vars',
+                  'GH_TOKEN,COPILOT_GITHUB_TOKEN',
+                  '--deny-tool',
+                  'shell(git commit)',
+                  '--deny-tool',
+                  'shell(git push)',
+                  '--deny-tool',
+                  'shell(gh)',
+              ]
+            : ['--available-tools', 'view,grep,glob', '--allow-tool', 'read'];
 
-        return $`pnpm dlx --package=@github/copilot@1.0.114 copilot --no-auto-update --no-custom-instructions --no-ask-user --disable-builtin-mcps --available-tools read --allow-tool read --silent -p ${promptWithFiles(
+        return $`pnpm dlx --package=@github/copilot@1.0.114 copilot --no-auto-update --no-custom-instructions --no-ask-user --disable-builtin-mcps ${permissions} --silent -p ${promptWithFiles(
             prompt,
             attachments,
         )} ${args}`;
@@ -295,7 +318,7 @@ export function runAI(
 ): AsyncGenerator<string> {
     switch (engine) {
         case 'copilot':
-            return runCopilot(prompt, attachments);
+            return runCopilot(prompt, attachments, allowChanges);
         case 'openai-codex':
             return runOpenAICodex(prompt, attachments, allowChanges);
         case 'gemini-cli':

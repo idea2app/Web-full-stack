@@ -10,6 +10,7 @@ on:
 
 permissions:
     contents: write
+    copilot-requests: write
     issues: read
     pull-requests: write
 
@@ -70,7 +71,6 @@ jobs:
                   echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
             - name: Implement the issue
-              if: ${{ steps.agent.outputs.engine != 'copilot' }}
               run: >-
                   pnpm exec zx script/implement-issue.ts
                   --issue-number "$ISSUE_NUMBER"
@@ -78,7 +78,8 @@ jobs:
               env:
                   ISSUE_NUMBER: ${{ inputs.issue_number }}
                   ISSUE_DATA_FILE: ${{ runner.temp }}/issue.json
-                  COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+                  GH_TOKEN: ${{ github.token }}
+                  COPILOT_GITHUB_TOKEN: ${{ steps.agent.outputs.engine == 'copilot' && secrets.COPILOT_GITHUB_TOKEN || '' }}
                   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
                   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
                   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -87,7 +88,6 @@ jobs:
                   KILO_CONFIG_CONTENT: ${{ secrets.KILO_CONFIG_CONTENT }}
 
             - uses: peter-evans/create-pull-request@v8.1.3
-              if: ${{ steps.agent.outputs.engine != 'copilot' }}
               env:
                   GIT_CONFIG_COUNT: '1'
                   GIT_CONFIG_KEY_0: core.hooksPath

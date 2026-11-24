@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -222,6 +223,20 @@ describe('issue relationships', () => {
     });
 
     describe('issue dependencies', () => {
+        it('links prerequisites and routes only after every prerequisite is completed', () => {
+            const result = spawnSync(
+                process.execPath,
+                [
+                    '--experimental-test-module-mocks',
+                    '--import',
+                    '@swc-node/register/esm-register',
+                    join('test', 'issue-workflow-fixture.mjs'),
+                ],
+                { encoding: 'utf8' },
+            );
+            assert.equal(result.status, 0, result.stderr || result.stdout);
+        });
+
         it('parses dependency connections and rejects incomplete results', () => {
             const nodes = [
                 {

@@ -32,9 +32,13 @@ const issues = new Map([
         },
     ],
 ]);
-const assignments = [];
 const workflows = [];
+const assignments = [];
+let assignmentSucceeds = false;
 let next = 10;
+
+const dispatchedIssues = () =>
+    workflows.map(([, , field]) => Number(field.split('=').pop()));
 
 function $(strings, ...values) {
     const command = strings.join('?');
@@ -100,6 +104,8 @@ function $(strings, ...values) {
         result.stdout = JSON.stringify(issue);
     } else if (command === 'gh issue edit ? --add-assignee @copilot') {
         assignments.push(Number(String(values[0]).split('/').pop()));
+        if (!assignmentSucceeds)
+            throw new Error('Resource not accessible by integration');
     } else if (
         command === 'gh workflow run implement-issue.yml --repo ? --ref ? -f ?'
     ) {
@@ -147,7 +153,7 @@ try {
         [1, 1, 1],
     );
     assert.deepEqual(issues.get(12).blockedBy, [10, 11]);
-    assert.deepEqual(assignments, [10, 11]);
+    assert.deepEqual(dispatchedIssues(), [10, 11]);
     assert.equal(saved.status, 'completed');
     assert.equal(saved.tasks[2].delegated, undefined);
     issues.get(12).blockedBy = [10];
@@ -157,7 +163,7 @@ try {
         `${pathToFileURL(join(root, 'script', 'process-tasks.ts'))}?recovery`
     );
     assert.deepEqual(issues.get(12).blockedBy, [10, 11]);
-    assert.deepEqual(assignments, [10, 11]);
+    assert.deepEqual(dispatchedIssues(), [10, 11]);
     issues.get(1).state = 'OPEN';
     issues.get(1).stateReason = null;
     issues.get(10).state = 'CLOSED';
@@ -168,14 +174,14 @@ try {
     await import(
         `${pathToFileURL(join(root, 'script', 'assign-issue.ts'))}?first`
     );
-    assert.deepEqual(assignments, [10, 11]);
+    assert.deepEqual(dispatchedIssues(), [10, 11]);
     issues.get(1).state = 'CLOSED';
     issues.get(1).stateReason = 'COMPLETED';
     argv._ = ['1', 'closed', 'main'];
     await import(
         `${pathToFileURL(join(root, 'script', 'assign-issue.ts'))}?parent-closed`
     );
-    assert.deepEqual(assignments, [10, 11]);
+    assert.deepEqual(dispatchedIssues(), [10, 11]);
     issues.get(1).state = 'OPEN';
     issues.get(1).stateReason = null;
     issues.get(11).stateReason = 'COMPLETED';
@@ -183,7 +189,7 @@ try {
     await import(
         `${pathToFileURL(join(root, 'script', 'assign-issue.ts'))}?second`
     );
-    assert.deepEqual(assignments, [10, 11, 12]);
+    assert.deepEqual(dispatchedIssues(), [10, 11, 12]);
     issues.set(14, {
         number: 14,
         state: 'OPEN',
@@ -197,14 +203,14 @@ try {
     await import(
         `${pathToFileURL(join(root, 'script', 'assign-issue.ts'))}?explicit-parent-blocker`
     );
-    assert.deepEqual(assignments, [10, 11, 12]);
+    assert.deepEqual(dispatchedIssues(), [10, 11, 12]);
     issues.get(1).state = 'CLOSED';
     issues.get(1).stateReason = 'NOT_PLANNED';
     argv._ = ['14', 'reopened', 'main'];
     await import(
         `${pathToFileURL(join(root, 'script', 'assign-issue.ts'))}?uncompleted-parent-blocker`
     );
-    assert.deepEqual(assignments, [10, 11, 12]);
+    assert.deepEqual(dispatchedIssues(), [10, 11, 12]);
     issues.set(15, {
         number: 15,
         state: 'OPEN',
@@ -218,13 +224,13 @@ try {
     await import(
         `${pathToFileURL(join(root, 'script', 'assign-issue.ts'))}?uncompleted-parent`
     );
-    assert.deepEqual(assignments, [10, 11, 12, 15]);
+    assert.deepEqual(dispatchedIssues(), [10, 11, 12, 15]);
     issues.get(1).stateReason = 'COMPLETED';
     argv._ = ['1', 'closed', 'main'];
     await import(
         `${pathToFileURL(join(root, 'script', 'assign-issue.ts'))}?completed-parent-blocker`
     );
-    assert.deepEqual(assignments, [10, 11, 12, 15, 14]);
+    assert.deepEqual(dispatchedIssues(), [10, 11, 12, 15, 14]);
     issues.set(13, {
         number: 13,
         state: 'OPEN',
@@ -238,9 +244,26 @@ try {
     await import(
         `${pathToFileURL(join(root, 'script', 'assign-issue.ts'))}?engine`
     );
-    assert.deepEqual(workflows, [
-        ['github.com/example/repo', 'main', 'issue_number=13'],
-    ]);
+    assert.deepEqual(dispatchedIssues(), [10, 11, 12, 15, 14, 13]);
+    assert.deepEqual(assignments, [10, 11, 12, 15, 14]);
+
+    issues.set(16, {
+        number: 16,
+        state: 'OPEN',
+        stateReason: null,
+        labels: [],
+        url: issueUrl(16),
+        parent: null,
+        blockedBy: [],
+    });
+    assignmentSucceeds = true;
+    argv._ = ['16', 'opened', 'main'];
+
+    await import(
+        `${pathToFileURL(join(root, 'script', 'assign-issue.ts'))}?assignment`
+    );
+    assert.deepEqual(assignments, [10, 11, 12, 15, 14, 16]);
+    assert.deepEqual(dispatchedIssues(), [10, 11, 12, 15, 14, 13]);
 } finally {
     process.chdir(root);
     rmSync(temporary, { recursive: true, force: true });

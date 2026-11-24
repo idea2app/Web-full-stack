@@ -9,12 +9,12 @@ on:
             - main
         paths:
             - 'documents/**/tasks.yml'
+    workflow_dispatch:
 
 permissions:
     actions: write
     contents: write
     issues: write
-    pull-requests: write
 
 concurrency:
     group: requirement-tasks
@@ -48,16 +48,12 @@ jobs:
                   GH_TOKEN: ${{ github.token }}
                   DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
-            - uses: peter-evans/create-pull-request@v8.1.3
+            - name: Commit task issue URLs to the default branch
               if: always() && steps.checkout.outcome == 'success'
-              env:
-                  GIT_CONFIG_COUNT: '1'
-                  GIT_CONFIG_KEY_0: core.hooksPath
-                  GIT_CONFIG_VALUE_0: /dev/null
+              uses: stefanzweifel/git-auto-commit-action@v7
               with:
-                  add-paths: documents/
-                  branch: requirements/task-issues
-                  commit-message: 'docs: record generated task issue numbers'
-                  title: 'docs: record generated task issue numbers'
-                  body: 'Record child issue numbers in the corresponding requirement task files.'
-                  delete-branch: true
+                  file_pattern: 'documents/**/tasks.yml'
+                  commit_message: |-
+                      docs: record generated task issue URLs
+
+                      Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
